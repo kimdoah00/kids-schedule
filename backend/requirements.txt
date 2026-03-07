@@ -10,5 +10,5 @@ anthropic==0.42.0
 httpx==0.28.1
 python-dotenv==1.0.1
 pydantic[email]==2.10.4
-expo-server-sdk==2.1.0
+exponent-server-sdk==2.2.0
 python-multipart==0.0.18
