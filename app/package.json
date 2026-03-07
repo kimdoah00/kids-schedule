@@ -15,6 +15,8 @@
     "expo": "~55.0.5",
     "expo-clipboard": "^55.0.8",
     "expo-constants": "^55.0.7",
+    "expo-contacts": "^55.0.8",
+    "expo-image-picker": "^55.0.11",
     "expo-linking": "^55.0.7",
     "expo-notifications": "^55.0.11",
     "expo-router": "^55.0.4",

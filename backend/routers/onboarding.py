@@ -6,7 +6,10 @@ from anthropic import AsyncAnthropic
 
 from database import get_db
 from models import User
-from schemas import SmsScanRequest, SmsScanResponse, DetectedContact, DetectedSchedule
+from schemas import (
+    SmsScanRequest, SmsScanResponse, DetectedContact, DetectedSchedule,
+    ScheduleOcrRequest, ScheduleOcrResponse, OcrScheduleItem,
+)
 from utils.auth import get_current_user
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
@@ -116,4 +119,101 @@ async def analyze_sms(
         contacts=contacts,
         schedules=schedules,
         total_analyzed=len(req.messages),
+    )
+
+
+SCHEDULE_OCR_PROMPT = """이 이미지는 한국 초등학생의 주간 스케줄표입니다.
+이미지에서 모든 활동/수업/학원/돌봄 스케줄을 추출하세요.
+
+## 추출 규칙
+1. 각 활동의 이름, 요일, 시작/종료 시간을 정확히 추출
+2. 요일은 숫자로: 월=0, 화=1, 수=2, 목=3, 금=4
+3. activity_type: school(정규수업), academy(학원), care(돌봄/늘봄), shuttle(이동/셔틀), other(기타)
+4. 시간은 "HH:MM" 형식 (24시간)
+
+## 응답 형식 (반드시 이 JSON만 출력)
+```json
+{
+  "schedules": [
+    {
+      "activity_name": "정규수업",
+      "activity_type": "school",
+      "days": [0,1,2,3,4],
+      "start_time": "09:00",
+      "end_time": "13:20"
+    }
+  ],
+  "raw_text": "이미지에서 읽은 원본 텍스트"
+}
+```
+"""
+
+
+@router.post("/analyze-schedule-photo", response_model=ScheduleOcrResponse)
+async def analyze_schedule_photo(
+    req: ScheduleOcrRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Analyze a schedule photo using Claude Vision to extract schedule data."""
+    import base64
+
+    # Detect image type
+    image_data = req.image_base64
+    if image_data.startswith("data:"):
+        media_type = image_data.split(";")[0].split(":")[1]
+        image_data = image_data.split(",")[1]
+    else:
+        media_type = "image/jpeg"
+
+    child_context = f"\n아이 이름: {req.child_name}" if req.child_name else ""
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=2000,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": image_data,
+                    },
+                },
+                {
+                    "type": "text",
+                    "text": SCHEDULE_OCR_PROMPT + child_context,
+                },
+            ],
+        }],
+    )
+
+    ai_text = response.content[0].text
+
+    try:
+        json_start = ai_text.index("```json") + 7
+        json_end = ai_text.index("```", json_start)
+        data = json.loads(ai_text[json_start:json_end].strip())
+    except (ValueError, json.JSONDecodeError):
+        try:
+            data = json.loads(ai_text)
+        except json.JSONDecodeError:
+            data = {"schedules": [], "raw_text": ai_text}
+
+    schedules = [
+        OcrScheduleItem(
+            activity_name=s.get("activity_name", ""),
+            activity_type=s.get("activity_type", "other"),
+            days=s.get("days", []),
+            start_time=s.get("start_time", ""),
+            end_time=s.get("end_time", ""),
+        )
+        for s in data.get("schedules", [])
+    ]
+
+    return ScheduleOcrResponse(
+        schedules=schedules,
+        raw_text=data.get("raw_text"),
     )

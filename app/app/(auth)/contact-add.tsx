@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Contacts from 'expo-contacts';
 import { contactsAPI } from '../../src/services/api';
 import { Contact } from '../../src/types';
 
@@ -49,8 +50,41 @@ export default function ContactAdd() {
     }
   };
 
+  const importFromPhone = async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('연락처 접근 권한이 필요합니다');
+      return;
+    }
+    const { data } = await Contacts.getContactsAsync({
+      fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+    });
+    if (data.length === 0) {
+      Alert.alert('연락처가 없습니다');
+      return;
+    }
+    // Show first 20 contacts with phone numbers
+    const phoneContacts = data
+      .filter((c) => c.phoneNumbers && c.phoneNumbers.length > 0)
+      .slice(0, 20);
+
+    if (phoneContacts.length === 0) {
+      Alert.alert('전화번호가 있는 연락처가 없습니다');
+      return;
+    }
+
+    // Auto-fill first contact found
+    const first = phoneContacts[0];
+    setName(first.name || '');
+    setPhone(first.phoneNumbers?.[0]?.number || '');
+    Alert.alert(
+      '연락처 불러오기',
+      `${phoneContacts.length}개의 연락처를 찾았습니다.\n"${first.name}"이(가) 입력되었습니다.\n역할과 채널을 선택 후 추가해주세요.`
+    );
+  };
+
   const goNext = () => {
-    router.push('/(auth)/schedule-input');
+    router.push('/(auth)/schedule-photo');
   };
 
   return (
@@ -105,6 +139,10 @@ export default function ContactAdd() {
           ))}
         </View>
 
+        <TouchableOpacity style={styles.importBtn} onPress={importFromPhone}>
+          <Text style={styles.importBtnText}>📱 폰 연락처에서 불러오기</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.addBtn} onPress={addContact}>
           <Text style={styles.addBtnText}>+ 연락처 추가</Text>
         </TouchableOpacity>
@@ -145,6 +183,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#6c5ce7', borderRadius: 10,
     padding: 14, alignItems: 'center', marginTop: 20, borderStyle: 'dashed',
   },
+  importBtn: {
+    backgroundColor: '#f0f0f0', borderRadius: 10,
+    padding: 14, alignItems: 'center', marginTop: 20,
+  },
+  importBtnText: { color: '#333', fontSize: 14, fontWeight: '600' },
   addBtnText: { color: '#6c5ce7', fontSize: 14, fontWeight: '600' },
   nextBtn: {
     backgroundColor: '#6c5ce7', borderRadius: 12, padding: 16,

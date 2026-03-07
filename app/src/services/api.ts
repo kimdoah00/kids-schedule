@@ -139,6 +139,13 @@ export const onboardingAPI = {
     const { data } = await api.post('/onboarding/analyze-sms', { messages });
     return data;
   },
+  analyzeSchedulePhoto: async (imageBase64: string, childName?: string) => {
+    const { data } = await api.post('/onboarding/analyze-schedule-photo', {
+      image_base64: imageBase64,
+      child_name: childName,
+    });
+    return data;
+  },
 };
 
 export default api;

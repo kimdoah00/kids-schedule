@@ -35,7 +35,7 @@ export default function ChildAdd() {
       Alert.alert('아이를 한 명 이상 등록해주세요');
       return;
     }
-    router.push('/(auth)/contact-add');
+    router.push('/(auth)/sms-scan');
   };
 
   return (

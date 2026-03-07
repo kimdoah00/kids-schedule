@@ -174,6 +174,26 @@ class SmsScanResponse(BaseModel):
     total_analyzed: int
 
 
+# ===== SCHEDULE OCR =====
+
+class ScheduleOcrRequest(BaseModel):
+    image_base64: str  # base64 encoded image
+    child_name: Optional[str] = None
+
+
+class OcrScheduleItem(BaseModel):
+    activity_name: str
+    activity_type: str  # school, academy, care, shuttle, other
+    days: List[int]  # 0=Mon, 4=Fri
+    start_time: str
+    end_time: str
+
+
+class ScheduleOcrResponse(BaseModel):
+    schedules: List[OcrScheduleItem]
+    raw_text: Optional[str] = None
+
+
 # ===== PUSH =====
 
 class PushRequest(BaseModel):
