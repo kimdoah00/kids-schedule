@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+*.db
+
+# Node
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build
+*.apk
+*.aab
+
+# OS
+.DS_Store
+Thumbs.db

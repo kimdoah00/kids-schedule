@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>키즈스케줄 - 화면 목업</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Noto Sans KR', sans-serif; background: #1a1a2e; color: #333; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
+
+h1 { color: #fff; margin: 20px 0 10px; font-size: 24px; }
+.subtitle { color: #888; margin-bottom: 30px; font-size: 14px; }
+
+/* Screen navigation */
+.screen-nav {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; justify-content: center; max-width: 900px;
+}
+.screen-nav button {
+  padding: 8px 16px; border: 1px solid #444; background: #2a2a3e; color: #ccc;
+  border-radius: 20px; cursor: pointer; font-size: 12px; transition: all 0.2s;
+}
+.screen-nav button.active { background: #6c5ce7; color: #fff; border-color: #6c5ce7; }
+.screen-nav button:hover { background: #3a3a5e; }
+
+/* Phone frame */
+.phone-container { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; }
+.phone {
+  width: 375px; height: 740px; background: #fff; border-radius: 40px;
+  overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  border: 3px solid #333; position: relative; display: none;
+}
+.phone.visible { display: block; }
+
+/* Status bar */
+.status-bar {
+  height: 44px; background: #fff; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 24px; font-size: 12px; font-weight: 600;
+}
+.status-bar .time { font-size: 14px; }
+.status-bar .icons { display: flex; gap: 4px; font-size: 11px; }
+
+/* Header */
+.header {
+  height: 56px; background: #6c5ce7; color: #fff; display: flex;
+  align-items: center; padding: 0 20px; font-size: 17px; font-weight: 600;
+}
+.header .back { margin-right: 12px; font-size: 20px; }
+.header .badge {
+  margin-left: auto; background: #ff6b6b; font-size: 11px;
+  padding: 2px 8px; border-radius: 10px;
+}
+
+/* Bottom tabs */
+.bottom-tabs {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 80px;
+  background: #fff; border-top: 1px solid #eee; display: flex;
+  align-items: flex-start; padding-top: 8px;
+}
+.tab-item {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 2px; font-size: 10px; color: #999;
+}
+.tab-item.active { color: #6c5ce7; }
+.tab-icon { font-size: 22px; }
+.tab-dot { width: 5px; height: 5px; background: #ff6b6b; border-radius: 50%; position: relative; top: -18px; left: 8px; }
+
+/* Content area */
+.content { flex: 1; overflow-y: auto; background: #f5f5f5; }
+
+/* ===== ONBOARDING SCREENS ===== */
+
+/* Role Select */
+.role-screen { padding: 40px 24px; background: #fff; height: 100%; display: flex; flex-direction: column; }
+.role-screen .logo { text-align: center; margin-bottom: 40px; }
+.role-screen .logo .icon { font-size: 60px; }
+.role-screen .logo h2 { font-size: 22px; margin-top: 12px; color: #333; }
+.role-screen .logo p { font-size: 14px; color: #888; margin-top: 4px; }
+.role-card {
+  border: 2px solid #eee; border-radius: 16px; padding: 24px;
+  margin-bottom: 16px; cursor: pointer; transition: all 0.2s;
+}
+.role-card:hover { border-color: #6c5ce7; background: #f8f7ff; }
+.role-card .role-icon { font-size: 32px; margin-bottom: 8px; }
+.role-card h3 { font-size: 16px; color: #333; }
+.role-card p { font-size: 13px; color: #888; margin-top: 4px; }
+
+/* SMS Scan */
+.scan-screen { padding: 24px; background: #fff; height: 100%; }
+.scan-header { text-align: center; margin-bottom: 24px; }
+.scan-header h2 { font-size: 18px; }
+.scan-header p { font-size: 13px; color: #888; margin-top: 4px; }
+.scan-progress {
+  background: #f0f0f0; border-radius: 8px; height: 8px; margin: 20px 0;
+  overflow: hidden;
+}
+.scan-progress .bar { height: 100%; background: linear-gradient(90deg, #6c5ce7, #a29bfe); width: 75%; border-radius: 8px; }
+.scan-result {
+  background: #f8f8ff; border: 1px solid #e8e6ff; border-radius: 12px;
+  padding: 16px; margin-bottom: 12px;
+}
+.scan-result .label { font-size: 11px; color: #6c5ce7; font-weight: 600; margin-bottom: 6px; }
+.scan-result .found-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0; font-size: 13px;
+}
+.scan-result .found-item:last-child { border-bottom: none; }
+.scan-result .found-icon { font-size: 18px; }
+.scan-result .found-role {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  background: #e8e6ff; color: #6c5ce7;
+}
+.scan-result .found-channel {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  margin-left: auto;
+}
+.ch-sms { background: #e3fcef; color: #00b894; }
+.ch-kakao { background: #fff3cd; color: #d68910; }
+.ch-hiclass { background: #d6eaf8; color: #2980b9; }
+
+/* Schedule Confirm */
+.schedule-confirm { padding: 16px; }
+.day-column { margin-bottom: 16px; }
+.day-label { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px; padding-left: 4px; }
+.time-block {
+  display: flex; align-items: stretch; margin-bottom: 2px; font-size: 12px;
+}
+.time-label { width: 50px; color: #999; font-size: 11px; padding-top: 4px; flex-shrink: 0; }
+.block-bar {
+  flex: 1; padding: 6px 10px; border-radius: 6px; color: #fff; font-size: 11px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.block-activity { background: #6c5ce7; }
+.block-transition { background: #a29bfe; font-style: italic; }
+.block-gap { background: #ff6b6b; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+.block-guardian { font-size: 10px; opacity: 0.8; }
+
+/* ===== MOM CHAT SCREEN ===== */
+.chat-screen { display: flex; flex-direction: column; height: calc(100% - 44px - 56px - 80px); }
+.chat-messages { flex: 1; padding: 16px; overflow-y: auto; background: #f5f5f5; }
+
+.msg { margin-bottom: 12px; max-width: 85%; }
+.msg-user { margin-left: auto; }
+.msg-ai { margin-right: auto; }
+.msg-bubble {
+  padding: 10px 14px; border-radius: 16px; font-size: 13px;
+  line-height: 1.5; word-break: keep-all;
+}
+.msg-user .msg-bubble { background: #6c5ce7; color: #fff; border-bottom-right-radius: 4px; }
+.msg-ai .msg-bubble { background: #fff; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+.msg-time { font-size: 10px; color: #999; margin-top: 2px; }
+.msg-user .msg-time { text-align: right; }
+
+/* Action card */
+.action-card {
+  background: #fff; border-radius: 12px; padding: 14px; margin-top: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 3px solid #6c5ce7;
+}
+.action-card .alert-badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  background: #fff3cd; color: #d68910; margin-bottom: 6px;
+}
+.action-card .gap-badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px; border-radius: 4px;
+  background: #ffe0e0; color: #e74c3c; margin-bottom: 6px;
+}
+.action-card p { font-size: 12px; color: #555; margin-bottom: 8px; line-height: 1.5; }
+.action-buttons { display: flex; flex-direction: column; gap: 6px; }
+.action-btn {
+  padding: 10px; border-radius: 8px; border: 1px solid #e0e0e0;
+  font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  background: #fafafa;
+}
+.action-btn:hover { background: #f0eeff; border-color: #6c5ce7; }
+.action-btn .num { color: #6c5ce7; font-weight: 700; }
+
+/* Message approval modal */
+.modal-overlay {
+  position: absolute; top: 44px; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); display: flex; align-items: flex-end;
+}
+.modal-sheet {
+  background: #fff; border-radius: 20px 20px 0 0; padding: 20px;
+  width: 100%; max-height: 80%;
+}
+.modal-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px; }
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.draft-card {
+  background: #f8f8ff; border: 1px solid #e8e6ff; border-radius: 12px;
+  padding: 14px; margin-bottom: 12px;
+}
+.draft-recipient {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 13px; font-weight: 600;
+}
+.draft-channel { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 400; }
+.draft-text { font-size: 12px; color: #555; line-height: 1.6; background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+.draft-actions { display: flex; gap: 8px; margin-top: 10px; }
+.btn-approve {
+  flex: 1; padding: 12px; border-radius: 10px; border: none;
+  background: #6c5ce7; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-edit {
+  padding: 12px 16px; border-radius: 10px; border: 1px solid #ddd;
+  background: #fff; font-size: 13px; cursor: pointer;
+}
+
+/* Chat input */
+.chat-input {
+  padding: 10px 16px; background: #fff; border-top: 1px solid #eee;
+  display: flex; gap: 8px; align-items: center;
+}
+.chat-input input {
+  flex: 1; padding: 10px 14px; border-radius: 20px; border: 1px solid #e0e0e0;
+  font-size: 13px; outline: none;
+}
+.chat-input .send-btn {
+  width: 36px; height: 36px; border-radius: 50%; background: #6c5ce7;
+  border: none; color: #fff; font-size: 16px; cursor: pointer;
+}
+
+/* ===== SCHEDULE TIMELINE ===== */
+.timeline-screen { padding: 16px; background: #f5f5f5; }
+.week-nav {
+  display: flex; align-items: center; justify-content: center; gap: 16px;
+  margin-bottom: 16px; font-size: 14px; font-weight: 600;
+}
+.week-nav button { background: none; border: none; font-size: 18px; cursor: pointer; }
+.child-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px;
+}
+.child-tab {
+  padding: 6px 14px; border-radius: 16px; font-size: 12px;
+  border: 1px solid #ddd; background: #fff; cursor: pointer;
+}
+.child-tab.active { background: #6c5ce7; color: #fff; border-color: #6c5ce7; }
+.timeline-day { margin-bottom: 20px; }
+.timeline-day-header {
+  font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.today-badge { font-size: 10px; background: #6c5ce7; color: #fff; padding: 1px 6px; border-radius: 4px; }
+.timeline-row {
+  display: flex; align-items: center; margin-bottom: 3px; font-size: 11px;
+}
+.tl-time { width: 80px; color: #999; font-size: 10px; }
+.tl-block {
+  flex: 1; padding: 8px 10px; border-radius: 6px; display: flex;
+  justify-content: space-between; align-items: center;
+}
+.tl-activity { background: #e8e6ff; color: #4a3db5; }
+.tl-transition { background: #f0eeff; color: #7c72c9; border: 1px dashed #c4bfff; font-size: 10px; }
+.tl-gap { background: #ffe0e0; color: #e74c3c; font-weight: 600; }
+.tl-guardian { font-size: 9px; color: #888; }
+.tl-checkin { font-size: 9px; }
+.tl-checkin.ok { color: #00b894; }
+.tl-checkin.missing { color: #e74c3c; }
+
+/* Runtime alert */
+.runtime-alert {
+  background: #fff3cd; border: 1px solid #ffc107; border-radius: 10px;
+  padding: 12px; margin-bottom: 12px; font-size: 12px;
+}
+.runtime-alert .alert-icon { font-size: 16px; margin-right: 6px; }
+
+/* ===== CAREGIVER SCREEN ===== */
+.caregiver-header {
+  height: 56px; background: #00b894; color: #fff; display: flex;
+  align-items: center; padding: 0 20px; font-size: 17px; font-weight: 600;
+}
+.caregiver-content { padding: 16px; background: #f5f5f5; }
+.caregiver-date {
+  font-size: 15px; font-weight: 700; margin-bottom: 4px;
+}
+.caregiver-update { font-size: 11px; color: #888; margin-bottom: 16px; }
+.caregiver-child-section { margin-bottom: 20px; }
+.caregiver-child-name {
+  font-size: 14px; font-weight: 700; color: #333; margin-bottom: 8px;
+  display: flex; align-items: center; gap: 6px;
+}
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-active { background: #00b894; }
+.cg-block {
+  display: flex; align-items: center; padding: 10px 12px; margin-bottom: 4px;
+  background: #fff; border-radius: 8px; font-size: 12px;
+}
+.cg-time { width: 90px; color: #666; font-size: 11px; }
+.cg-name { flex: 1; font-weight: 500; }
+.cg-status { font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+.cg-done { background: #e3fcef; color: #00b894; }
+.cg-current { background: #6c5ce7; color: #fff; }
+.cg-upcoming { background: #f0f0f0; color: #999; }
+.cg-changed { background: #fff3cd; color: #d68910; }
+
+.push-notification {
+  position: absolute; top: 50px; left: 10px; right: 10px;
+  background: #fff; border-radius: 12px; padding: 12px; font-size: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15); z-index: 10;
+  border-left: 4px solid #6c5ce7;
+}
+.push-notification .push-app { font-size: 10px; color: #6c5ce7; font-weight: 600; margin-bottom: 4px; }
+.push-notification .push-title { font-weight: 600; margin-bottom: 2px; }
+.push-notification .push-body { color: #666; }
+
+/* ===== CONTACTS SCREEN ===== */
+.contacts-screen { padding: 16px; }
+.contact-group-label { font-size: 11px; color: #888; font-weight: 600; margin-bottom: 8px; margin-top: 16px; }
+.contact-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  background: #fff; border-radius: 10px; margin-bottom: 6px;
+}
+.contact-avatar {
+  width: 40px; height: 40px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 18px;
+}
+.avatar-teacher { background: #e8e6ff; }
+.avatar-caregiver { background: #e3fcef; }
+.contact-info { flex: 1; }
+.contact-name { font-size: 13px; font-weight: 600; }
+.contact-detail { font-size: 11px; color: #888; }
+.contact-channel-badge {
+  font-size: 10px; padding: 3px 8px; border-radius: 4px;
+}
+
+/* Buttons */
+.primary-btn {
+  width: 100%; padding: 14px; border-radius: 12px; border: none;
+  background: #6c5ce7; color: #fff; font-size: 15px; font-weight: 600;
+  cursor: pointer; margin-top: 16px;
+}
+.secondary-btn {
+  width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #ddd;
+  background: #fff; font-size: 15px; cursor: pointer; margin-top: 8px;
+}
+
+/* Label */
+.screen-label {
+  position: absolute; top: 0; right: 0; background: #6c5ce7; color: #fff;
+  font-size: 10px; padding: 4px 10px; border-radius: 0 0 0 10px; z-index: 5;
+}
+
+/* Two phone display */
+.dual-display { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; }
+</style>
+</head>
+<body>
+
+<h1>키즈스케줄 - UI 목업</h1>
+<p class="subtitle">일하는 엄마를 위한 AI 스케줄 매니저</p>
+
+<div class="screen-nav" id="nav">
+  <button class="active" onclick="show('onboard1')">1. 역할 선택</button>
+  <button onclick="show('onboard2')">2. SMS 스캔</button>
+  <button onclick="show('onboard3')">3. 스케줄 확인</button>
+  <button onclick="show('mom-chat')">4. 엄마: AI 채팅</button>
+  <button onclick="show('mom-chat-action')">5. 엄마: 액션 제안</button>
+  <button onclick="show('mom-approve')">6. 엄마: 메시지 승인</button>
+  <button onclick="show('mom-schedule')">7. 엄마: 스케줄</button>
+  <button onclick="show('mom-contacts')">8. 엄마: 연락처</button>
+  <button onclick="show('caregiver')">9. 주양육자</button>
+  <button onclick="show('caregiver-push')">10. 주양육자: 알림</button>
+</div>
+
+<!-- ===== 1. ROLE SELECT ===== -->
+<div class="phone visible" id="onboard1">
+  <div class="screen-label">온보딩 1/3</div>
+  <div class="status-bar">
+    <span class="time">9:41</span>
+    <span class="icons">LTE 100%</span>
+  </div>
+  <div class="role-screen">
+    <div class="logo">
+      <div class="icon">📅</div>
+      <h2>키즈스케줄</h2>
+      <p>AI가 아이 스케줄을 관리해드려요</p>
+    </div>
+    <div class="role-card">
+      <div class="role-icon">👩‍💼</div>
+      <h3>엄마 (의사결정자)</h3>
+      <p>아이 스케줄 관리, 선생님 소통, AI 비서 사용</p>
+    </div>
+    <div class="role-card">
+      <div class="role-icon">👵</div>
+      <h3>주양육자 (실행자)</h3>
+      <p>오늘의 스케줄 확인, 변경 알림 수신</p>
+    </div>
+    <p style="text-align:center; font-size:12px; color:#999; margin-top:auto; padding-bottom:20px;">
+      엄마가 먼저 가입 후, 주양육자에게 초대 코드를 보내세요
+    </p>
+  </div>
+</div>
+
+<!-- ===== 2. SMS SCAN ===== -->
+<div class="phone" id="onboard2">
+  <div class="screen-label">온보딩 2/3</div>
+  <div class="status-bar">
+    <span class="time">9:42</span>
+    <span class="icons">LTE 100%</span>
+  </div>
+  <div class="header">
+    <span class="back">&#8249;</span>
+    메시지 분석 중
+  </div>
+  <div style="padding:24px; background:#fff; height:calc(100% - 100px); overflow-y:auto;">
+    <div class="scan-header">
+      <h2>AI가 메시지를 분석하고 있어요</h2>
+      <p>기존 문자/알림에서 아이 관련 연락처와 스케줄을 찾는 중...</p>
+    </div>
+    <div class="scan-progress"><div class="bar"></div></div>
+    <p style="font-size:12px; color:#6c5ce7; text-align:center; margin-bottom:20px;">283개 메시지 분석 완료</p>
+
+    <div class="scan-result">
+      <div class="label">발견된 연락처 (5명)</div>
+      <div class="found-item">
+        <span class="found-icon">👩‍🏫</span>
+        <span>010-1234-5678</span>
+        <span class="found-role">돌봄교실</span>
+        <span class="found-channel ch-sms">문자</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">🥋</span>
+        <span>태권도 관장님</span>
+        <span class="found-role">학원</span>
+        <span class="found-channel ch-kakao">카톡</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">🚐</span>
+        <span>태권도 셔틀기사</span>
+        <span class="found-role">셔틀</span>
+        <span class="found-channel ch-kakao">카톡</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">🏫</span>
+        <span>하이클래스</span>
+        <span class="found-role">학교</span>
+        <span class="found-channel ch-hiclass">하이클래스</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">👵</span>
+        <span>할머니</span>
+        <span class="found-role">주양육자</span>
+        <span class="found-channel ch-kakao">카톡</span>
+      </div>
+    </div>
+
+    <div class="scan-result">
+      <div class="label">발견된 스케줄 패턴</div>
+      <div class="found-item">
+        <span class="found-icon">🔄</span>
+        <span style="font-size:12px;">매일 13:30 돌봄교실 입실 / 14:00 퇴실</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">🔄</span>
+        <span style="font-size:12px;">월수금 14:20 태권도 도착 / 16:00 퇴실</span>
+      </div>
+      <div class="found-item">
+        <span class="found-icon">🔄</span>
+        <span style="font-size:12px;">화목 14:00 피아노 도착 / 15:30 퇴실</span>
+      </div>
+    </div>
+
+    <button class="primary-btn">맞아요, 다음으로</button>
+    <button class="secondary-btn">수정할게요</button>
+  </div>
+</div>
+
+<!-- ===== 3. SCHEDULE CONFIRM ===== -->
+<div class="phone" id="onboard3">
+  <div class="screen-label">온보딩 3/3</div>
+  <div class="status-bar">
+    <span class="time">9:44</span>
+    <span class="icons">LTE 100%</span>
+  </div>
+  <div class="header">
+    <span class="back">&#8249;</span>
+    스케줄 확인
+  </div>
+  <div style="padding:16px; background:#f5f5f5; height:calc(100% - 100px); overflow-y:auto;">
+    <p style="font-size:13px; color:#555; margin-bottom:12px; line-height:1.5;">
+      AI가 구성한 <b>지윤이</b>의 월요일 스케줄이에요.<br>
+      <span style="color:#e74c3c; font-weight:600;">빨간 구간</span>은 담당 어른이 지정되지 않은 공백이에요.
+    </p>
+
+    <div class="day-column">
+      <div class="day-label">월요일</div>
+      <div class="time-block">
+        <div class="time-label">8:30</div>
+        <div class="block-bar block-activity">
+          <span>정규수업</span>
+          <span class="block-guardian">담임선생님</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">13:20</div>
+        <div class="block-bar block-transition">
+          <span>교실 → 돌봄교실 이동</span>
+          <span class="block-guardian">돌봄교사</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">13:30</div>
+        <div class="block-bar block-activity">
+          <span>돌봄교실</span>
+          <span class="block-guardian">돌봄교사</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">14:00</div>
+        <div class="block-bar block-gap">
+          <span>공백! 담당자 없음</span>
+          <span class="block-guardian">???</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">14:10</div>
+        <div class="block-bar block-transition">
+          <span>셔틀 탑승</span>
+          <span class="block-guardian">셔틀기사</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">14:20</div>
+        <div class="block-bar block-activity">
+          <span>태권도</span>
+          <span class="block-guardian">관장님</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">16:00</div>
+        <div class="block-bar block-gap">
+          <span>공백! 담당자 없음</span>
+          <span class="block-guardian">???</span>
+        </div>
+      </div>
+      <div class="time-block">
+        <div class="time-label">16:20</div>
+        <div class="block-bar block-activity" style="background:#00b894;">
+          <span>집 (할머니)</span>
+          <span class="block-guardian">할머니</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff3cd; border-radius:10px; padding:12px; margin-bottom:16px; font-size:12px;">
+      <b>AI 제안:</b> 14:00-14:10 공백은 돌봄교실에서 셔틀 탑승까지의 대기시간이에요. 돌봄교사가 셔틀까지 인계하도록 설정할까요?
+    </div>
+
+    <button class="primary-btn">공백 해결하고 완료</button>
+  </div>
+</div>
+
+<!-- ===== 4. MOM CHAT ===== -->
+<div class="phone" id="mom-chat">
+  <div class="screen-label">엄마 - 메인</div>
+  <div class="status-bar">
+    <span class="time">14:23</span>
+    <span class="icons">LTE 87%</span>
+  </div>
+  <div class="header">
+    키즈스케줄 AI
+    <span class="badge">2</span>
+  </div>
+  <div class="chat-screen">
+    <div class="chat-messages">
+      <div class="msg msg-ai">
+        <div class="msg-bubble">안녕하세요! 오늘 지윤이 스케줄 잘 진행 중이에요 📅<br><br>✅ 8:30 학교 출석 확인<br>✅ 13:30 돌봄교실 입실 확인<br>✅ 14:05 셔틀 탑승 확인<br>✅ 14:20 태권도 도착 확인<br><br>현재 태권도 수업 중이에요. 16:00 끝나면 할머니 픽업 예정.</div>
+        <div class="msg-time">오후 2:20</div>
+      </div>
+      <div class="msg msg-user">
+        <div class="msg-bubble">내일 태권도 쉬어야 해. 지윤이가 컨디션이 안 좋아</div>
+        <div class="msg-time">오후 2:23</div>
+      </div>
+      <div class="msg msg-ai">
+        <div class="msg-bubble">
+          네, 내일(3/8 토요일) 태권도 결석 처리할게요.
+        </div>
+        <div class="msg-time">오후 2:23</div>
+      </div>
+    </div>
+    <div class="chat-input">
+      <input type="text" placeholder="메시지를 입력하세요..." />
+      <button class="send-btn">&#8593;</button>
+    </div>
+  </div>
+  <div class="bottom-tabs">
+    <div class="tab-item active"><div class="tab-icon">💬</div>채팅</div>
+    <div class="tab-item"><div class="tab-icon">📅</div>스케줄</div>
+    <div class="tab-item"><div class="tab-icon">👥</div>연락처</div>
+  </div>
+</div>
+
+<!-- ===== 5. MOM CHAT - ACTION ===== -->
+<div class="phone" id="mom-chat-action">
+  <div class="screen-label">엄마 - 액션 제안</div>
+  <div class="status-bar">
+    <span class="time">14:23</span>
+    <span class="icons">LTE 87%</span>
+  </div>
+  <div class="header">
+    키즈스케줄 AI
+  </div>
+  <div class="chat-screen">
+    <div class="chat-messages">
+      <div class="msg msg-user">
+        <div class="msg-bubble">내일 태권도 쉬어야 해. 지윤이가 컨디션이 안 좋아</div>
+        <div class="msg-time">오후 2:23</div>
+      </div>
+      <div class="msg msg-ai">
+        <div class="msg-bubble">네, 내일(3/8 토) 태권도 결석 처리할게요.</div>
+        <div class="action-card">
+          <span class="gap-badge">공백 발생</span>
+          <p>내일 <b>14:20-16:00</b> 태권도 시간이 공백이 돼요.<br>할머니 픽업이 16:20인데, 14:00부터 빌게요.</p>
+          <div class="action-buttons">
+            <div class="action-btn"><span class="num">1</span> 할머니께 14:00 픽업 요청</div>
+            <div class="action-btn"><span class="num">2</span> 돌봄교실 16:00까지 연장</div>
+            <div class="action-btn"><span class="num">3</span> 다른 방법 직접 입력</div>
+          </div>
+        </div>
+        <div class="msg-time">오후 2:23</div>
+      </div>
+      <div class="msg msg-user">
+        <div class="msg-bubble">2번</div>
+        <div class="msg-time">오후 2:24</div>
+      </div>
+      <div class="msg msg-ai">
+        <div class="msg-bubble">돌봄교실 16:00까지 연장할게요.<br><br>연락할 분들:<br>1. <b>태권도 관장님</b> — 내일 결석 알림 (카톡)<br>2. <b>돌봄 선생님</b> — 16시까지 연장 요청 (문자)<br>3. <b>할머니</b> — 내일 변경된 픽업 시간 안내 (카톡)<br><br>메시지 초안을 만들었어요. 확인해주세요.</div>
+        <div class="action-card">
+          <div class="action-buttons">
+            <div class="action-btn" style="background:#6c5ce7; color:#fff; justify-content:center; font-weight:600;">메시지 확인하기</div>
+          </div>
+        </div>
+        <div class="msg-time">오후 2:24</div>
+      </div>
+    </div>
+    <div class="chat-input">
+      <input type="text" placeholder="메시지를 입력하세요..." />
+      <button class="send-btn">&#8593;</button>
+    </div>
+  </div>
+  <div class="bottom-tabs">
+    <div class="tab-item active"><div class="tab-icon">💬</div>채팅</div>
+    <div class="tab-item"><div class="tab-icon">📅</div>스케줄</div>
+    <div class="tab-item"><div class="tab-icon">👥</div>연락처</div>
+  </div>
+</div>
+
+<!-- ===== 6. MESSAGE APPROVAL ===== -->
+<div class="phone" id="mom-approve">
+  <div class="screen-label">엄마 - 메시지 승인</div>
+  <div class="status-bar">
+    <span class="time">14:24</span>
+    <span class="icons">LTE 87%</span>
+  </div>
+  <div class="header">
+    키즈스케줄 AI
+  </div>
+  <div style="height:calc(100% - 100px); background:#f5f5f5;">
+    <div class="modal-overlay">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">메시지 승인 (1/3)</div>
+
+        <div class="draft-card">
+          <div class="draft-recipient">
+            🥋 태권도 관장님
+            <span class="draft-channel ch-kakao">카카오톡</span>
+          </div>
+          <div class="draft-text">
+            관장님 안녕하세요, 지윤이 엄마입니다.<br>
+            내일(3/8) 지윤이가 컨디션이 안 좋아서 태권도 수업을 하루 쉬려고 합니다.<br>
+            양해 부탁드립니다. 감사합니다 🙏
+          </div>
+          <div class="draft-actions">
+            <button class="btn-edit">수정</button>
+            <button class="btn-approve">승인 → 카톡 열기</button>
+          </div>
+        </div>
+
+        <div class="draft-card" style="opacity:0.5;">
+          <div class="draft-recipient">
+            👩‍🏫 돌봄 선생님
+            <span class="draft-channel ch-sms">문자</span>
+          </div>
+          <div class="draft-text" style="color:#999;">다음 메시지...</div>
+        </div>
+
+        <div class="draft-card" style="opacity:0.3;">
+          <div class="draft-recipient">
+            👵 할머니
+            <span class="draft-channel ch-kakao">카카오톡</span>
+          </div>
+          <div class="draft-text" style="color:#999;">다음 메시지...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 7. MOM SCHEDULE ===== -->
+<div class="phone" id="mom-schedule">
+  <div class="screen-label">엄마 - 스케줄</div>
+  <div class="status-bar">
+    <span class="time">14:25</span>
+    <span class="icons">LTE 87%</span>
+  </div>
+  <div class="header">스케줄</div>
+  <div style="height:calc(100% - 180px); overflow-y:auto;">
+    <div class="timeline-screen">
+      <div class="child-tabs">
+        <div class="child-tab active">지윤 (1학년)</div>
+        <div class="child-tab">서준 (2학년)</div>
+      </div>
+      <div class="week-nav">
+        <button>&#8249;</button>
+        <span>3월 7일 (금) 오늘</span>
+        <button>&#8250;</button>
+      </div>
+
+      <div class="runtime-alert">
+        <span class="alert-icon">✅</span>
+        현재 태권도 수업 중 (14:20 도착 확인)
+      </div>
+
+      <div class="timeline-day">
+        <div class="timeline-row">
+          <div class="tl-time">8:30-13:20</div>
+          <div class="tl-block tl-activity">
+            <span>정규수업</span>
+            <span class="tl-checkin ok">✓ 출석</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">13:20-13:30</div>
+          <div class="tl-block tl-transition">
+            <span>→ 돌봄교실 이동</span>
+            <span class="tl-guardian">돌봄교사</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">13:30-14:00</div>
+          <div class="tl-block tl-activity">
+            <span>돌봄교실</span>
+            <span class="tl-checkin ok">✓ 입실 ✓ 퇴실</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">14:00-14:10</div>
+          <div class="tl-block tl-transition">
+            <span>→ 셔틀 대기/탑승</span>
+            <span class="tl-checkin ok">✓ 탑승</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">14:20-16:00</div>
+          <div class="tl-block tl-activity" style="background:#d6e4ff; color:#2d5bb9;">
+            <span>태권도 (진행 중)</span>
+            <span class="tl-checkin ok">✓ 도착</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">16:00-16:20</div>
+          <div class="tl-block tl-transition">
+            <span>→ 할머니 픽업 대기</span>
+            <span class="tl-guardian">관장님</span>
+          </div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-time">16:20~</div>
+          <div class="tl-block tl-activity" style="background:#d4efdf; color:#1e8449;">
+            <span>집 (할머니)</span>
+            <span class="tl-guardian">할머니</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-tabs">
+    <div class="tab-item"><div class="tab-icon">💬</div>채팅</div>
+    <div class="tab-item active"><div class="tab-icon">📅</div>스케줄</div>
+    <div class="tab-item"><div class="tab-icon">👥</div>연락처</div>
+  </div>
+</div>
+
+<!-- ===== 8. MOM CONTACTS ===== -->
+<div class="phone" id="mom-contacts">
+  <div class="screen-label">엄마 - 연락처</div>
+  <div class="status-bar">
+    <span class="time">14:26</span>
+    <span class="icons">LTE 87%</span>
+  </div>
+  <div class="header">연락처</div>
+  <div style="height:calc(100% - 180px); overflow-y:auto;">
+    <div class="contacts-screen">
+      <div class="child-tabs" style="margin-bottom:8px;">
+        <div class="child-tab active">지윤</div>
+        <div class="child-tab">서준</div>
+        <div class="child-tab">전체</div>
+      </div>
+
+      <div class="contact-group-label">학교</div>
+      <div class="contact-item">
+        <div class="contact-avatar avatar-teacher">👩‍🏫</div>
+        <div class="contact-info">
+          <div class="contact-name">김미영 선생님</div>
+          <div class="contact-detail">1학년 2반 담임</div>
+        </div>
+        <span class="contact-channel-badge ch-hiclass">하이클래스</span>
+      </div>
+      <div class="contact-item">
+        <div class="contact-avatar avatar-teacher">👩‍🏫</div>
+        <div class="contact-info">
+          <div class="contact-name">돌봄교실</div>
+          <div class="contact-detail">010-1234-5678</div>
+        </div>
+        <span class="contact-channel-badge ch-sms">문자</span>
+      </div>
+
+      <div class="contact-group-label">학원</div>
+      <div class="contact-item">
+        <div class="contact-avatar avatar-teacher">🥋</div>
+        <div class="contact-info">
+          <div class="contact-name">태권도 관장님</div>
+          <div class="contact-detail">무적태권도</div>
+        </div>
+        <span class="contact-channel-badge ch-kakao">카톡</span>
+      </div>
+      <div class="contact-item">
+        <div class="contact-avatar avatar-teacher">🚐</div>
+        <div class="contact-info">
+          <div class="contact-name">셔틀 기사님</div>
+          <div class="contact-detail">태권도 셔틀 2호차</div>
+        </div>
+        <span class="contact-channel-badge ch-kakao">카톡</span>
+      </div>
+
+      <div class="contact-group-label">주양육자</div>
+      <div class="contact-item">
+        <div class="contact-avatar avatar-caregiver">👵</div>
+        <div class="contact-info">
+          <div class="contact-name">할머니</div>
+          <div class="contact-detail">앱 설치됨 · 캘린더 동기화 중</div>
+        </div>
+        <span class="contact-channel-badge ch-kakao">카톡</span>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-tabs">
+    <div class="tab-item"><div class="tab-icon">💬</div>채팅</div>
+    <div class="tab-item"><div class="tab-icon">📅</div>스케줄</div>
+    <div class="tab-item active"><div class="tab-icon">👥</div>연락처</div>
+  </div>
+</div>
+
+<!-- ===== 9. CAREGIVER ===== -->
+<div class="phone" id="caregiver">
+  <div class="screen-label">주양육자 (할머니)</div>
+  <div class="status-bar">
+    <span class="time">14:25</span>
+    <span class="icons">LTE 92%</span>
+  </div>
+  <div class="caregiver-header">
+    📅 키즈스케줄
+  </div>
+  <div style="height:calc(100% - 100px); overflow-y:auto; background:#f5f5f5;">
+    <div class="caregiver-content">
+      <div class="caregiver-date">오늘 3월 7일 (금)</div>
+      <div class="caregiver-update">마지막 업데이트: 2분 전</div>
+
+      <div class="caregiver-child-section">
+        <div class="caregiver-child-name">
+          <div class="status-dot status-active"></div>
+          지윤 (1학년)
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">8:30-13:20</div>
+          <div class="cg-name">정규수업</div>
+          <div class="cg-status cg-done">완료</div>
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">13:30-14:00</div>
+          <div class="cg-name">돌봄교실</div>
+          <div class="cg-status cg-done">완료</div>
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">14:00-14:20</div>
+          <div class="cg-name">셔틀 이동</div>
+          <div class="cg-status cg-done">완료</div>
+        </div>
+        <div class="cg-block" style="border-left: 3px solid #6c5ce7;">
+          <div class="cg-time">14:20-16:00</div>
+          <div class="cg-name" style="font-weight:700;">태권도</div>
+          <div class="cg-status cg-current">진행 중</div>
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">16:00-16:20</div>
+          <div class="cg-name">픽업 대기</div>
+          <div class="cg-status cg-upcoming">예정</div>
+        </div>
+        <div class="cg-block" style="background:#f0fff4;">
+          <div class="cg-time" style="color:#00b894; font-weight:600;">16:20</div>
+          <div class="cg-name" style="color:#00b894; font-weight:700;">내가 픽업</div>
+          <div class="cg-status cg-upcoming">예정</div>
+        </div>
+      </div>
+
+      <div class="caregiver-child-section">
+        <div class="caregiver-child-name">
+          <div class="status-dot status-active"></div>
+          서준 (2학년)
+        </div>
+        <div class="cg-block" style="border-left: 3px solid #6c5ce7;">
+          <div class="cg-time">14:00-15:30</div>
+          <div class="cg-name" style="font-weight:700;">피아노</div>
+          <div class="cg-status cg-current">진행 중</div>
+        </div>
+        <div class="cg-block" style="background:#f0fff4;">
+          <div class="cg-time" style="color:#00b894; font-weight:600;">15:30</div>
+          <div class="cg-name" style="color:#00b894; font-weight:700;">내가 픽업</div>
+          <div class="cg-status cg-upcoming">예정</div>
+        </div>
+      </div>
+
+      <div style="background:#fff; border-radius:12px; padding:16px; margin-top:8px;">
+        <p style="font-size:13px; font-weight:700; margin-bottom:8px;">오늘 내 할일</p>
+        <p style="font-size:12px; color:#555; line-height:1.8;">
+          ✅ 서준이 15:30 피아노학원 픽업<br>
+          ⬜ 지윤이 16:20 태권도 앞 픽업<br>
+          ⬜ 두 아이 집으로
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 10. CAREGIVER WITH PUSH ===== -->
+<div class="phone" id="caregiver-push">
+  <div class="screen-label">주양육자 - 변경 알림</div>
+  <div class="status-bar">
+    <span class="time">14:25</span>
+    <span class="icons">LTE 92%</span>
+  </div>
+  <div class="push-notification">
+    <div class="push-app">키즈스케줄</div>
+    <div class="push-title">내일 지윤이 스케줄 변경</div>
+    <div class="push-body">태권도 결석 → 돌봄교실 16시까지 연장. 픽업 시간 변경 없음.</div>
+  </div>
+  <div class="caregiver-header">
+    📅 키즈스케줄
+  </div>
+  <div style="height:calc(100% - 100px); overflow-y:auto; background:#f5f5f5;">
+    <div class="caregiver-content">
+      <div class="caregiver-date">내일 3월 8일 (토) 변경됨</div>
+      <div class="caregiver-update" style="color:#d68910;">방금 변경됨</div>
+
+      <div class="caregiver-child-section">
+        <div class="caregiver-child-name">
+          <div class="status-dot" style="background:#ffc107;"></div>
+          지윤 (1학년) — 변경됨
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">8:30-13:20</div>
+          <div class="cg-name">정규수업</div>
+          <div class="cg-status cg-upcoming">예정</div>
+        </div>
+        <div class="cg-block">
+          <div class="cg-time">13:30-16:00</div>
+          <div class="cg-name">돌봄교실</div>
+          <div class="cg-status cg-changed">연장됨</div>
+        </div>
+        <div class="cg-block" style="text-decoration:line-through; opacity:0.4;">
+          <div class="cg-time">14:20-16:00</div>
+          <div class="cg-name">태권도</div>
+          <div class="cg-status" style="background:#ffe0e0; color:#e74c3c;">결석</div>
+        </div>
+        <div class="cg-block" style="background:#f0fff4;">
+          <div class="cg-time" style="color:#00b894; font-weight:600;">16:20</div>
+          <div class="cg-name" style="color:#00b894; font-weight:700;">내가 픽업 (변경 없음)</div>
+          <div class="cg-status cg-upcoming">예정</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.phone').forEach(p => p.classList.remove('visible'));
+  document.getElementById(id).classList.add('visible');
+  document.querySelectorAll('.screen-nav button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

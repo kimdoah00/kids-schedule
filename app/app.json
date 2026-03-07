@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "키즈스케줄",
+    "slug": "kids-schedule",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "scheme": "kids-schedule",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#6c5ce7"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#6c5ce7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.teamkai.kidsschedule"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}
