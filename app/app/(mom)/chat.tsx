@@ -118,47 +118,49 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}
-      >
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        renderItem={renderMessage}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      />
 
-        {loading && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#6c5ce7" />
-            <Text style={styles.loadingText}>AI가 생각 중...</Text>
-          </View>
-        )}
-
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={input}
-            onChangeText={setInput}
-            placeholder="메시지를 입력하세요..."
-            multiline
-            maxLength={500}
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!input.trim() || loading}
-          >
-            <Text style={styles.sendBtnText}>전송</Text>
-          </TouchableOpacity>
+      {loading && (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color="#6c5ce7" />
+          <Text style={styles.loadingText}>AI가 생각 중...</Text>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+      )}
+
+      <View style={styles.inputRow}>
+        <TextInput
+          style={styles.input}
+          value={input}
+          onChangeText={setInput}
+          placeholder="메시지를 입력하세요..."
+          multiline
+          maxLength={500}
+          onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 300)}
+        />
+        <TouchableOpacity
+          style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
+          onPress={sendMessage}
+          disabled={!input.trim() || loading}
+        >
+          <Text style={styles.sendBtnText}>전송</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
