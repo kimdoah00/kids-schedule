@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   FlatList, KeyboardAvoidingView, Platform, Alert, SafeAreaView,
-  ActivityIndicator, Clipboard,
+  ActivityIndicator,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { chatAPI } from '../../src/services/api';
 import { ChatMessage, DraftMessage } from '../../src/types';
 
@@ -60,7 +61,7 @@ export default function ChatScreen() {
   };
 
   const handleCopyAndSend = (draft: DraftMessage) => {
-    Clipboard.setString(draft.draft_text);
+    await Clipboard.setStringAsync(draft.draft_text);
     Alert.alert(
       '메시지 복사 완료',
       `${draft.contact_name}에게 보낼 메시지가 클립보드에 복사되었습니다.\n\n채널: ${draft.channel}\n\n앱에서 붙여넣기 해주세요.`,
