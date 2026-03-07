@@ -60,7 +60,7 @@ export default function ChatScreen() {
     }
   };
 
-  const handleCopyAndSend = (draft: DraftMessage) => {
+  const handleCopyAndSend = async (draft: DraftMessage) => {
     await Clipboard.setStringAsync(draft.draft_text);
     Alert.alert(
       '메시지 복사 완료',
