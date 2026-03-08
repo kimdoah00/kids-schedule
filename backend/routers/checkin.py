@@ -4,10 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import get_db
-from models import User, CheckinEvent, CheckinEventType, ScheduleBlock, Activity, Contact
+from models import User, Child, CheckinEvent, CheckinEventType, ScheduleBlock, Activity, Contact, IncomingNotification
 from schemas import CheckinRequest
 from utils.auth import get_current_user
 from routers.schedule import format_time
+from services.ai_service import parse_notification
 
 router = APIRouter(prefix="/checkin", tags=["checkin"])
 
@@ -70,6 +71,85 @@ async def record_checkin(
         "event_id": event.id,
         "matched_block": matched_block_id,
         "matched": event.matched,
+    }
+
+
+@router.post("/notification")
+async def process_notification(
+    req: CheckinRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Process raw notification from NotificationListenerService via Inbox Agent."""
+    # Inbox Agent로 파싱
+    parsed = await parse_notification(
+        raw_message=req.raw_message,
+        source_app=req.source_app or "unknown",
+        source_channel=req.source_channel or "unknown",
+    )
+
+    event_type = parsed.get("event_type", "chat")
+
+    # 입퇴실 이벤트면 CheckinEvent 생성
+    if event_type in ("enter", "exit", "board", "arrive"):
+        child_id = req.child_id
+        if not child_id and parsed.get("child_name"):
+            child_result = await db.execute(
+                select(Child).where(
+                    Child.family_id == user.family_id,
+                    Child.name.contains(parsed["child_name"])
+                )
+            )
+            child = child_result.scalar_one_or_none()
+            if child:
+                child_id = child.id
+
+        if child_id:
+            now = datetime.now()
+            matched_block_id = None
+            blocks_result = await db.execute(
+                select(ScheduleBlock).join(Activity)
+                .where(Activity.child_id == child_id, ScheduleBlock.day_of_week == now.weekday())
+                .order_by(ScheduleBlock.start_time)
+            )
+            for block in blocks_result.scalars().all():
+                if block.start_time <= now.time() <= block.end_time:
+                    matched_block_id = block.id
+                    break
+
+            event = CheckinEvent(
+                child_id=child_id,
+                schedule_block_id=matched_block_id,
+                event_type=CheckinEventType(event_type),
+                raw_message=req.raw_message,
+                source_app=req.source_app,
+                source_channel=req.source_channel,
+                matched=matched_block_id is not None,
+            )
+            db.add(event)
+
+    # 모든 알림은 IncomingNotification에도 저장
+    notification = IncomingNotification(
+        family_id=user.family_id,
+        raw_content=req.raw_message,
+        ai_summary=parsed.get("summary"),
+        schedule_impact=event_type if event_type != "chat" else None,
+        source_app=req.source_app,
+        source_channel=req.source_channel,
+    )
+    db.add(notification)
+    await db.commit()
+
+    # Schedule-Guard 트리거 (입퇴실 이벤트일 때)
+    guard_result = None
+    if event_type in ("enter", "exit", "board", "arrive") and req.child_id:
+        from services.schedule_guard import run_guard_check
+        guard_result = await run_guard_check(db, req.child_id)
+
+    return {
+        "parsed": parsed,
+        "event_type": event_type,
+        "guard_warnings": guard_result.get("warnings", []) if guard_result else [],
     }
 
 

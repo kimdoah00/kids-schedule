@@ -157,6 +157,8 @@ class CheckinEvent(Base):
     event_type: Mapped[CheckinEventType] = mapped_column(SAEnum(CheckinEventType))
     raw_message: Mapped[str] = mapped_column(Text)
     source_contact_id: Mapped[Optional[str]] = mapped_column(ForeignKey("contacts.id"), nullable=True)
+    source_app: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    source_channel: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     matched: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -188,6 +190,8 @@ class IncomingNotification(Base):
     raw_content: Mapped[str] = mapped_column(Text)
     ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     schedule_impact: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    source_app: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    source_channel: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     status: Mapped[NotificationStatus] = mapped_column(SAEnum(NotificationStatus), default=NotificationStatus.PENDING)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

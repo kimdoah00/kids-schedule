@@ -123,11 +123,13 @@ class ChatResponse(BaseModel):
 # ===== CHECKIN =====
 
 class CheckinRequest(BaseModel):
-    child_id: str
-    event_type: str  # enter, exit, board, arrive
+    child_id: Optional[str] = None  # Inbox Agent가 자동 매칭할 수도 있으므로 optional
+    event_type: Optional[str] = None  # Inbox Agent가 판단
     raw_message: str
     source_contact_id: Optional[str] = None
     source_phone: Optional[str] = None
+    source_app: Optional[str] = None  # 패키지명
+    source_channel: Optional[str] = None  # hiclass/sms/kakao
 
 
 # ===== NOTIFICATION =====
