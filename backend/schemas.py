@@ -112,12 +112,19 @@ class DraftMessage(BaseModel):
     app_package: Optional[str] = None
 
 
+class SendResult(BaseModel):
+    contact_name: str
+    channel: str
+    status: str  # sent, pending_user_action, error
+
+
 class ChatResponse(BaseModel):
     response: str
     action_type: Optional[str] = None
     draft_messages: Optional[List[DraftMessage]] = None
     schedule_changes: Optional[dict] = None
     gaps_detected: Optional[List[GapInfo]] = None
+    send_results: Optional[List[SendResult]] = None
 
 
 # ===== CHECKIN =====
