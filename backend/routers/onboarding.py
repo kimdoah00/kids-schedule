@@ -9,6 +9,7 @@ from models import User
 from schemas import (
     SmsScanRequest, SmsScanResponse, DetectedContact, DetectedSchedule,
     ScheduleOcrRequest, ScheduleOcrResponse, OcrScheduleItem,
+    MultiChannelScanRequest, MultiChannelScanResponse,
 )
 from utils.auth import get_current_user
 
@@ -119,6 +120,123 @@ async def analyze_sms(
         contacts=contacts,
         schedules=schedules,
         total_analyzed=len(req.messages),
+    )
+
+
+MULTI_CHANNEL_PROMPT = """당신은 한국 초등학생 엄마의 여러 채널 메시지를 분석하는 AI입니다.
+
+다음은 SMS 문자, 카카오톡 알림, 하이클래스 알림을 모두 포함한 메시지 목록입니다.
+아이의 학교/학원/돌봄 관련 연락처와 스케줄 패턴을 추출하세요.
+
+## 분석할 메시지
+{messages}
+
+## 추출 규칙
+1. 입퇴실/출석/도착/탑승 관련 반복 패턴을 찾으세요
+2. 각 연락처가 어떤 역할(학교, 학원, 돌봄, 셔틀, 주양육자)인지 판단하세요
+3. 반복되는 시간 패턴에서 스케줄을 추출하세요
+4. channel: sms, kakao, hiclass 구분
+5. 하이클래스 메시지에서 학교 시간표/돌봄 시간 추출
+6. 카카오톡 메시지에서 학원 선생님/할머니 등 연락처 추출
+
+## 응답 형식 (반드시 이 JSON 형식으로)
+```json
+{{
+  "contacts": [
+    {{
+      "phone_number": "010-xxxx-xxxx 또는 없으면 빈 문자열",
+      "detected_name": "이름/기관명",
+      "detected_role": "teacher|caregiver|shuttle|admin",
+      "channel": "sms|kakao|hiclass",
+      "pattern": "발견된 패턴 설명",
+      "sample_messages": ["메시지1", "메시지2"]
+    }}
+  ],
+  "schedules": [
+    {{
+      "activity_name": "활동명",
+      "days": [0,1,2,3,4],
+      "start_time": "HH:MM",
+      "end_time": "HH:MM",
+      "contact_phone": "연락처 또는 null"
+    }}
+  ]
+}}
+```
+"""
+
+
+@router.post("/analyze-all", response_model=MultiChannelScanResponse)
+async def analyze_all_channels(
+    req: MultiChannelScanRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Analyze SMS + KakaoTalk + HiClass messages to auto-detect schedule."""
+    parts = []
+
+    for m in req.sms_messages[:150]:
+        parts.append(f"[SMS] [{m.timestamp}] {m.phone_number}: {m.body}")
+
+    for n in req.notifications[:150]:
+        channel_label = n.source_channel.upper()
+        parts.append(f"[{channel_label}] [{n.timestamp}] {n.sender_name or '알 수 없음'}: {n.body}")
+
+    msg_text = "\n".join(parts)
+    prompt = MULTI_CHANNEL_PROMPT.format(messages=msg_text)
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=3000,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    ai_text = response.content[0].text
+
+    try:
+        json_start = ai_text.index("```json") + 7
+        json_end = ai_text.index("```", json_start)
+        data = json.loads(ai_text[json_start:json_end].strip())
+    except (ValueError, json.JSONDecodeError):
+        try:
+            data = json.loads(ai_text)
+        except json.JSONDecodeError:
+            data = {"contacts": [], "schedules": []}
+
+    contacts = [
+        DetectedContact(
+            phone_number=c.get("phone_number", ""),
+            detected_name=c.get("detected_name"),
+            detected_role=c.get("detected_role", "teacher"),
+            channel=c.get("channel", "sms"),
+            pattern=c.get("pattern", ""),
+            sample_messages=c.get("sample_messages", []),
+        )
+        for c in data.get("contacts", [])
+    ]
+
+    schedules = [
+        DetectedSchedule(
+            activity_name=s.get("activity_name", ""),
+            days=s.get("days", []),
+            start_time=s.get("start_time", ""),
+            end_time=s.get("end_time", ""),
+            contact_phone=s.get("contact_phone"),
+        )
+        for s in data.get("schedules", [])
+    ]
+
+    channels = []
+    if req.sms_messages:
+        channels.append("sms")
+    notification_channels = set(n.source_channel for n in req.notifications)
+    channels.extend(notification_channels)
+
+    return MultiChannelScanResponse(
+        contacts=contacts,
+        schedules=schedules,
+        total_analyzed=len(req.sms_messages) + len(req.notifications),
+        channels_scanned=channels,
     )
 
 

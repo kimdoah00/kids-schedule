@@ -183,6 +183,29 @@ class SmsScanResponse(BaseModel):
     total_analyzed: int
 
 
+# ===== MULTI-CHANNEL SCAN =====
+
+class NotificationMessage(BaseModel):
+    body: str
+    timestamp: str
+    source_app: str  # package name
+    source_channel: str  # hiclass/sms/kakao
+    sender_name: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+class MultiChannelScanRequest(BaseModel):
+    sms_messages: List[SmsMessage] = []
+    notifications: List[NotificationMessage] = []  # 하이클래스/카톡 알림
+
+
+class MultiChannelScanResponse(BaseModel):
+    contacts: List[DetectedContact]
+    schedules: List[DetectedSchedule]
+    total_analyzed: int
+    channels_scanned: List[str]
+
+
 # ===== SCHEDULE OCR =====
 
 class ScheduleOcrRequest(BaseModel):
