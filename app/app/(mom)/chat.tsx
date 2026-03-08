@@ -6,7 +6,14 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { chatAPI } from '../../src/services/api';
-import { ChatMessage, DraftMessage } from '../../src/types';
+import { ChatMessage, DraftMessage, SendResult } from '../../src/types';
+import { sendViaKakaoTalk, sendViaHiClass } from '../../src/services/IntentService';
+
+const CHANNEL_LABELS: Record<string, string> = {
+  sms: 'SMS',
+  kakao: '카카오톡',
+  hiclass: '하이클래스',
+};
 
 export default function ChatScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -45,6 +52,7 @@ export default function ChatScreen() {
         action_type: res.action_type || undefined,
         draft_messages: res.draft_messages || undefined,
         gaps_detected: res.gaps_detected || undefined,
+        send_results: res.send_results || undefined,
       };
       setMessages((prev) => [...prev, aiMsg]);
     } catch (e: any) {
@@ -62,12 +70,51 @@ export default function ChatScreen() {
 
   const handleCopyAndSend = async (draft: DraftMessage) => {
     await Clipboard.setStringAsync(draft.draft_text);
-    Alert.alert(
-      '메시지 복사 완료',
-      `${draft.contact_name}에게 보낼 메시지가 클립보드에 복사되었습니다.\n\n채널: ${draft.channel}\n\n앱에서 붙여넣기 해주세요.`,
-      [{ text: '확인' }]
-    );
+
+    if (draft.channel === 'kakao') {
+      const opened = await sendViaKakaoTalk(draft.draft_text);
+      if (opened) {
+        Alert.alert(
+          '카카오톡으로 이동합니다',
+          `${draft.contact_name}에게 보낼 메시지가 클립보드에 복사되었습니다.\n대화방에서 붙여넣기 해주세요.`,
+        );
+      } else {
+        Alert.alert('복사 완료', '카카오톡을 열 수 없습니다. 직접 열어서 붙여넣기 해주세요.');
+      }
+    } else if (draft.channel === 'hiclass') {
+      const opened = await sendViaHiClass(draft.draft_text);
+      if (opened) {
+        Alert.alert(
+          '하이클래스로 이동합니다',
+          `메시지가 클립보드에 복사되었습니다.\n하이클래스에서 붙여넣기 해주세요.`,
+        );
+      } else {
+        Alert.alert('복사 완료', '하이클래스를 열 수 없습니다. 직접 열어서 붙여넣기 해주세요.');
+      }
+    } else {
+      Alert.alert(
+        '메시지 복사 완료',
+        `${draft.contact_name}에게 보낼 메시지가 클립보드에 복사되었습니다.\n\n채널: ${CHANNEL_LABELS[draft.channel] || draft.channel}`,
+        [{ text: '확인' }]
+      );
+    }
   };
+
+  const renderSendResults = (results: SendResult[]) => (
+    <View style={styles.sendResultsContainer}>
+      {results.map((r, i) => (
+        <View key={i} style={styles.sendResultItem}>
+          <Text style={r.status === 'sent' ? styles.sendResultSent : styles.sendResultPending}>
+            {r.status === 'sent' ? '✓' : '⏳'}
+          </Text>
+          <Text style={styles.sendResultText}>
+            {r.contact_name} ({CHANNEL_LABELS[r.channel] || r.channel})
+            {r.status === 'sent' ? ' - 발신 완료' : ' - 수동 발신 필요'}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
     const isUser = item.role === 'user';
@@ -77,6 +124,10 @@ export default function ChatScreen() {
           <Text style={[styles.msgText, isUser && styles.msgTextUser]}>{item.content}</Text>
         </View>
 
+        {/* Send Results */}
+        {item.send_results && item.send_results.length > 0 && renderSendResults(item.send_results)}
+
+        {/* Draft Messages */}
         {item.draft_messages && item.draft_messages.length > 0 && (
           <View style={styles.draftsContainer}>
             <Text style={styles.draftTitle}>메시지 초안</Text>
@@ -84,20 +135,38 @@ export default function ChatScreen() {
               <View key={idx} style={styles.draftCard}>
                 <View style={styles.draftHeader}>
                   <Text style={styles.draftTo}>{draft.contact_name}</Text>
-                  <Text style={styles.draftChannel}>{draft.channel}</Text>
+                  <Text style={styles.draftChannel}>
+                    {CHANNEL_LABELS[draft.channel] || draft.channel}
+                  </Text>
                 </View>
                 <Text style={styles.draftText}>{draft.draft_text}</Text>
                 <TouchableOpacity
-                  style={styles.draftBtn}
+                  style={[
+                    styles.draftBtn,
+                    draft.channel === 'kakao' && styles.draftBtnKakao,
+                    draft.channel === 'hiclass' && styles.draftBtnHiclass,
+                  ]}
                   onPress={() => handleCopyAndSend(draft)}
                 >
-                  <Text style={styles.draftBtnText}>복사하고 보내기</Text>
+                  <Text style={[
+                    styles.draftBtnText,
+                    draft.channel === 'kakao' && styles.draftBtnTextKakao,
+                  ]}>
+                    {draft.channel === 'sms'
+                      ? '✓ 자동 발신됨'
+                      : draft.channel === 'kakao'
+                      ? '카톡으로 보내기'
+                      : draft.channel === 'hiclass'
+                      ? '하이클래스로 보내기'
+                      : '복사하고 보내기'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             ))}
           </View>
         )}
 
+        {/* Gap Warnings */}
         {item.gaps_detected && item.gaps_detected.length > 0 && (
           <View style={styles.gapsContainer}>
             <Text style={styles.gapTitle}>보호자 공백 감지</Text>
@@ -166,7 +235,6 @@ export default function ChatScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f5f5f5' },
-  flex: { flex: 1 },
   list: { padding: 16, paddingBottom: 8 },
   msgRow: { marginBottom: 12 },
   msgRowUser: { alignItems: 'flex-end' },
@@ -175,6 +243,16 @@ const styles = StyleSheet.create({
   bubbleAi: { backgroundColor: '#fff', borderBottomLeftRadius: 4, elevation: 1 },
   msgText: { fontSize: 15, lineHeight: 22, color: '#333' },
   msgTextUser: { color: '#fff' },
+  // Send Results
+  sendResultsContainer: {
+    marginTop: 6, maxWidth: '85%', backgroundColor: '#e8f5e9',
+    borderRadius: 8, padding: 8,
+  },
+  sendResultItem: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  sendResultSent: { fontSize: 14, color: '#4caf50' },
+  sendResultPending: { fontSize: 14, color: '#ff9800' },
+  sendResultText: { fontSize: 12, color: '#555' },
+  // Draft Messages
   draftsContainer: { marginTop: 8, maxWidth: '85%' },
   draftTitle: { fontSize: 12, fontWeight: 'bold', color: '#6c5ce7', marginBottom: 4 },
   draftCard: {
@@ -191,7 +269,11 @@ const styles = StyleSheet.create({
   draftBtn: {
     backgroundColor: '#6c5ce7', borderRadius: 8, padding: 10, alignItems: 'center',
   },
+  draftBtnKakao: { backgroundColor: '#fee500' },
+  draftBtnHiclass: { backgroundColor: '#2196f3' },
   draftBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
+  draftBtnTextKakao: { color: '#333' },
+  // Gap Warnings
   gapsContainer: { marginTop: 8, maxWidth: '85%' },
   gapTitle: { fontSize: 12, fontWeight: 'bold', color: '#e74c3c', marginBottom: 4 },
   gapCard: {
@@ -200,11 +282,13 @@ const styles = StyleSheet.create({
   },
   gapText: { fontSize: 13, fontWeight: 'bold', color: '#e74c3c' },
   gapDetail: { fontSize: 12, color: '#999', marginTop: 2 },
+  // Loading
   loadingRow: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20,
     paddingVertical: 8, gap: 8,
   },
   loadingText: { fontSize: 13, color: '#999' },
+  // Input
   inputRow: {
     flexDirection: 'row', alignItems: 'flex-end', padding: 12,
     backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', gap: 8,

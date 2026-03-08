@@ -52,12 +52,19 @@ export interface DraftMessage {
   app_package: string | null;
 }
 
+export interface SendResult {
+  contact_name: string;
+  channel: string;
+  status: 'sent' | 'pending_user_action' | 'error';
+}
+
 export interface ChatResponse {
   response: string;
   action_type: string | null;
   draft_messages: DraftMessage[] | null;
   schedule_changes: any | null;
   gaps_detected: GapInfo[] | null;
+  send_results: SendResult[] | null;
 }
 
 export interface ChatMessage {
@@ -68,6 +75,7 @@ export interface ChatMessage {
   action_type?: string;
   draft_messages?: DraftMessage[];
   gaps_detected?: GapInfo[];
+  send_results?: SendResult[];
 }
 
 export interface TimelineItem {
