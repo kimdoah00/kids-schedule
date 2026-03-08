@@ -21,6 +21,9 @@ dist/
 *.apk
 *.aab
 
+# Worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
