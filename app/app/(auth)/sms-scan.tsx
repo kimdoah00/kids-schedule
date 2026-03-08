@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  ScrollView, SafeAreaView, ActivityIndicator, Image,
+  ScrollView, SafeAreaView, ActivityIndicator, Image, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { onboardingAPI } from '../../src/services/api';
+import {
+  checkNotificationListenerPermission,
+  requestNotificationListenerPermission,
+} from '../../src/services/NotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SmsScan() {
@@ -13,7 +17,26 @@ export default function SmsScan() {
   const [pastedMessages, setPastedMessages] = useState('');
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [analyzed, setAnalyzed] = useState(false);
+  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [step, setStep] = useState<'permission' | 'scan'>('permission');
+
+  const checkPermission = async () => {
+    if (Platform.OS !== 'android') {
+      setStep('scan');
+      return;
+    }
+    const granted = await checkNotificationListenerPermission();
+    setPermissionGranted(granted);
+    if (granted) {
+      setStep('scan');
+    }
+  };
+
+  const openPermissionSettings = async () => {
+    await requestNotificationListenerPermission();
+    // After returning from settings, check again
+    setTimeout(checkPermission, 1000);
+  };
 
   const addScreenshot = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -35,29 +58,59 @@ export default function SmsScan() {
 
     setLoading(true);
     try {
-      // Parse pasted messages into structured format
+      // Parse pasted messages - detect channel from content
       const lines = pastedMessages.split('\n').filter((l) => l.trim());
-      const messages = lines.map((line) => ({
-        phone_number: 'unknown',
-        body: line.trim(),
-        timestamp: new Date().toISOString(),
-        sender_name: null,
-      }));
+      const smsMessages: any[] = [];
+      const notifications: any[] = [];
 
-      const res = await onboardingAPI.analyzeSms(messages);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // Detect channel markers like [카톡], [하이클래스], [SMS]
+        if (trimmed.startsWith('[카톡]') || trimmed.startsWith('[KAKAO]')) {
+          notifications.push({
+            body: trimmed.replace(/^\[(카톡|KAKAO)\]\s*/, ''),
+            timestamp: new Date().toISOString(),
+            source_app: 'com.kakao.talk',
+            source_channel: 'kakao',
+          });
+        } else if (trimmed.startsWith('[하이클래스]') || trimmed.startsWith('[HICLASS]')) {
+          notifications.push({
+            body: trimmed.replace(/^\[(하이클래스|HICLASS)\]\s*/, ''),
+            timestamp: new Date().toISOString(),
+            source_app: 'com.iscreammedia.app.hiclass.android',
+            source_channel: 'hiclass',
+          });
+        } else {
+          smsMessages.push({
+            phone_number: 'unknown',
+            body: trimmed,
+            timestamp: new Date().toISOString(),
+            sender_name: null,
+          });
+        }
+      }
+
+      // Use multi-channel if we have notifications, otherwise fallback to SMS-only
+      let res;
+      if (notifications.length > 0) {
+        res = await onboardingAPI.analyzeAll(smsMessages, notifications);
+      } else {
+        res = await onboardingAPI.analyzeSms(smsMessages);
+      }
 
       // Store results for next screens
       await AsyncStorage.setItem('onboarding_contacts', JSON.stringify(res.contacts || []));
       await AsyncStorage.setItem('onboarding_schedules', JSON.stringify(res.schedules || []));
 
-      setAnalyzed(true);
-
       const contactCount = res.contacts?.length || 0;
       const scheduleCount = res.schedules?.length || 0;
+      const channelInfo = res.channels_scanned
+        ? ` (${res.channels_scanned.join(', ')})`
+        : '';
 
       Alert.alert(
         'AI 분석 완료',
-        `연락처 ${contactCount}개, 스케줄 패턴 ${scheduleCount}개를 찾았습니다.\n다음 화면에서 확인하세요.`,
+        `연락처 ${contactCount}개, 스케줄 패턴 ${scheduleCount}개를 찾았습니다.${channelInfo}\n다음 화면에서 확인하세요.`,
         [{ text: '확인', onPress: () => router.push('/(auth)/contact-confirm') }]
       );
     } catch (e: any) {
@@ -71,6 +124,54 @@ export default function SmsScan() {
     router.push('/(auth)/contact-add');
   };
 
+  // Step 1: Permission screen (Android only)
+  if (step === 'permission' && Platform.OS === 'android') {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={styles.permissionContent}>
+          <Text style={styles.heading}>알림 접근 권한 설정</Text>
+          <Text style={styles.desc}>
+            하이클래스, 카카오톡 알림을 자동으로 읽으려면{'\n'}
+            알림 접근 권한이 필요합니다
+          </Text>
+
+          <View style={styles.channelList}>
+            <View style={styles.channelItem}>
+              <Text style={styles.channelIcon}>📱</Text>
+              <View>
+                <Text style={styles.channelName}>SMS 문자</Text>
+                <Text style={styles.channelDesc}>입퇴실, 도착 알림 문자</Text>
+              </View>
+            </View>
+            <View style={styles.channelItem}>
+              <Text style={styles.channelIcon}>💬</Text>
+              <View>
+                <Text style={styles.channelName}>카카오톡</Text>
+                <Text style={styles.channelDesc}>학원/선생님 카톡 알림</Text>
+              </View>
+            </View>
+            <View style={styles.channelItem}>
+              <Text style={styles.channelIcon}>🏫</Text>
+              <View>
+                <Text style={styles.channelName}>하이클래스</Text>
+                <Text style={styles.channelDesc}>학교 알림장, 공지사항</Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.analyzeBtn} onPress={openPermissionSettings}>
+            <Text style={styles.analyzeBtnText}>알림 접근 권한 설정하기</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.skipPermBtn} onPress={() => setStep('scan')}>
+            <Text style={styles.skipBtnText}>나중에 설정하고 수동 입력으로 →</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Step 2: Scan screen
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
@@ -81,22 +182,23 @@ export default function SmsScan() {
         </Text>
 
         <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>이런 메시지를 찾습니다</Text>
+          <Text style={styles.infoTitle}>3채널 통합 분석 지원</Text>
           <Text style={styles.infoText}>
-            - "지윤이가 출석했습니다" (학교){'\n'}
-            - "지윤이가 돌봄교실에 입실했습니다" (돌봄){'\n'}
-            - "지윤이 셔틀 탑승했습니다" (셔틀){'\n'}
-            - "지윤이가 도착했습니다" (학원)
+            - SMS 문자: "지윤이가 출석했습니다"{'\n'}
+            - [카톡] 학원 선생님: "오늘 수업 정상 진행"{'\n'}
+            - [하이클래스] 돌봄교실: "입실 완료"{'\n'}
+            {'\n'}
+            채널 표시 없으면 SMS로 자동 분류됩니다
           </Text>
         </View>
 
         <Text style={styles.sectionTitle}>방법 1: 메시지 붙여넣기</Text>
-        <Text style={styles.hint}>문자앱에서 메시지를 복사해서 붙여넣으세요</Text>
+        <Text style={styles.hint}>문자/카톡/하이클래스 메시지를 복사해서 붙여넣으세요</Text>
         <TextInput
           style={styles.textArea}
           value={pastedMessages}
           onChangeText={setPastedMessages}
-          placeholder={"[2026-03-06 09:00] 한빛초등학교: 지윤이가 출석했습니다\n[2026-03-06 13:30] 돌봄교실: 지윤이가 입실했습니다\n[2026-03-06 14:00] 돌봄교실: 지윤이가 퇴실했습니다\n[2026-03-06 14:20] 태권도: 지윤이가 도착했습니다"}
+          placeholder={"[2026-03-06 09:00] 한빛초: 지윤이가 출석했습니다\n[카톡] 태권도 관장님: 지윤이 도착했습니다\n[하이클래스] 돌봄교실: 지윤이 입실 완료"}
           multiline
           numberOfLines={8}
           textAlignVertical="top"
@@ -116,7 +218,7 @@ export default function SmsScan() {
         {loading ? (
           <View style={styles.loadingSection}>
             <ActivityIndicator size="large" color="#6c5ce7" />
-            <Text style={styles.loadingText}>AI가 메시지를 분석 중...</Text>
+            <Text style={styles.loadingText}>AI가 3채널 메시지를 분석 중...</Text>
           </View>
         ) : (
           <TouchableOpacity style={styles.analyzeBtn} onPress={analyzeMessages}>
@@ -134,8 +236,17 @@ export default function SmsScan() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 24, backgroundColor: '#fff' },
+  permissionContent: { flex: 1, justifyContent: 'center' },
   heading: { fontSize: 20, fontWeight: 'bold' },
   desc: { fontSize: 13, color: '#888', marginTop: 4, marginBottom: 16, lineHeight: 20 },
+  channelList: { marginVertical: 20, gap: 12 },
+  channelItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#f8f7ff', borderRadius: 12, padding: 14,
+  },
+  channelIcon: { fontSize: 28 },
+  channelName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
+  channelDesc: { fontSize: 12, color: '#888', marginTop: 2 },
   infoBox: {
     backgroundColor: '#f8f7ff', borderRadius: 12, padding: 16, marginBottom: 20,
     borderLeftWidth: 3, borderLeftColor: '#6c5ce7',
@@ -164,6 +275,10 @@ const styles = StyleSheet.create({
   },
   analyzeBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   skipBtn: {
+    borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14,
+    alignItems: 'center', marginTop: 12,
+  },
+  skipPermBtn: {
     borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14,
     alignItems: 'center', marginTop: 12,
   },
