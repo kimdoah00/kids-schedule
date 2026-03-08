@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_db
-from routers import auth, children, contacts, schedule, chat, checkin, onboarding, guardian_view
+from routers import auth, children, contacts, schedule, chat, checkin, onboarding, guardian_view, messages
 
 
 @asynccontextmanager
@@ -41,6 +41,7 @@ app.include_router(chat.router)
 app.include_router(checkin.router)
 app.include_router(onboarding.router)
 app.include_router(guardian_view.router)
+app.include_router(messages.router)
 
 
 @app.get("/")
