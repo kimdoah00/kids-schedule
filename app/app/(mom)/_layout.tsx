@@ -19,6 +19,20 @@ export default function MomLayout() {
         }}
       />
       <Tabs.Screen
+        name="timeline"
+        options={{
+          title: '타임라인',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>⏱️</Text>,
+        }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: '메시지',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>📨</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="schedule"
         options={{
           title: '스케줄',

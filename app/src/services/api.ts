@@ -139,10 +139,39 @@ export const onboardingAPI = {
     const { data } = await api.post('/onboarding/analyze-sms', { messages });
     return data;
   },
+  analyzeAll: async (smsMessages: any[], notifications: any[]) => {
+    const { data } = await api.post('/onboarding/analyze-all', {
+      sms_messages: smsMessages,
+      notifications,
+    });
+    return data;
+  },
   analyzeSchedulePhoto: async (imageBase64: string, childName?: string) => {
     const { data } = await api.post('/onboarding/analyze-schedule-photo', {
       image_base64: imageBase64,
       child_name: childName,
+    });
+    return data;
+  },
+};
+
+// ===== MESSAGES =====
+export const messagesAPI = {
+  list: async (days: number = 7, channel?: string) => {
+    const params: any = { days };
+    if (channel) params.channel = channel;
+    const { data } = await api.get('/messages/', { params });
+    return data;
+  },
+};
+
+// ===== NOTIFICATION =====
+export const notificationAPI = {
+  process: async (rawMessage: string, sourceApp: string, sourceChannel: string) => {
+    const { data } = await api.post('/checkin/notification', {
+      raw_message: rawMessage,
+      source_app: sourceApp,
+      source_channel: sourceChannel,
     });
     return data;
   },
