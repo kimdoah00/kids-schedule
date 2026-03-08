@@ -2,7 +2,7 @@
   "expo": {
     "name": "키즈스케줄",
     "slug": "kids-schedule",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -19,7 +19,12 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "package": "com.teamkai.kidsschedule"
+      "package": "com.teamkai.kidsschedule",
+      "permissions": [
+        "android.permission.READ_SMS",
+        "android.permission.RECEIVE_SMS",
+        "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+      ]
     },
     "plugins": [
       "expo-router"

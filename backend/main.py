@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="키즈스케줄 API",
     description="일하는 엄마를 위한 AI 자녀 스케줄 매니저",
-    version="0.1.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -46,7 +46,7 @@ app.include_router(messages.router)
 
 @app.get("/")
 async def root():
-    return {"app": "키즈스케줄", "version": "0.1.0", "status": "running"}
+    return {"app": "키즈스케줄", "version": "2.0.0", "status": "running"}
 
 
 @app.get("/health")
