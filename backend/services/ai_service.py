@@ -5,11 +5,12 @@ from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from models import Child, Contact, Activity, ScheduleBlock, ChatMessage
+from models import Child, Contact, Activity, ScheduleBlock, ChatMessage, ActivityContact
 from routers.schedule import format_time
 from prompts.mom_ai import MOM_AI_PROMPT
 from prompts.inbox import INBOX_PROMPT
 from prompts.schedule_guard import SCHEDULE_GUARD_PROMPT
+from prompts.mom_responder import MOM_RESPONDER_PROMPT
 
 client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -199,3 +200,106 @@ async def check_schedule_guard(schedule_blocks: list, checkin_events: list, curr
             return json.loads(text[start:end])
         except (ValueError, json.JSONDecodeError):
             return {"status": "all_clear", "warnings": []}
+
+
+async def identify_sender(
+    db: AsyncSession, family_id: str, source_app: str, source_channel: str, raw_message: str
+) -> Tuple[Optional[Contact], Optional[Activity]]:
+    """Identify which contact sent this notification and which activity it relates to.
+    Returns (contact, activity) or (None, None)."""
+    # Try to find contact by channel match and message content
+    contacts_result = await db.execute(
+        select(Contact).where(Contact.family_id == family_id)
+    )
+    contacts = contacts_result.scalars().all()
+
+    # Match by organization/name appearing in message
+    matched_contact = None
+    for c in contacts:
+        if c.organization and c.organization in raw_message:
+            matched_contact = c
+            break
+        if c.name and c.name in raw_message:
+            matched_contact = c
+            break
+
+    # Find related activity via ActivityContact
+    matched_activity = None
+    if matched_contact:
+        ac_result = await db.execute(
+            select(ActivityContact)
+            .where(ActivityContact.contact_id == matched_contact.id)
+        )
+        ac = ac_result.scalar_one_or_none()
+        if ac:
+            matched_activity = await db.get(Activity, ac.activity_id)
+
+    return matched_contact, matched_activity
+
+
+async def assess_and_respond(
+    db: AsyncSession,
+    family_id: str,
+    parsed_notification: dict,
+    contact: Optional[Contact],
+    activity: Optional[Activity],
+    child: Optional[Child],
+) -> dict:
+    """Mom-Responder Agent: assess priority and draft response."""
+    family_context = await build_family_context(db, family_id)
+
+    # Build notification context
+    contact_info = "불명"
+    if contact:
+        contact_info = f"{contact.name} ({contact.role.value}, {contact.organization or ''}, {contact.channel.value})"
+
+    activity_info = "불명"
+    if activity:
+        activity_info = f"{activity.name} ({activity.activity_type})"
+
+    child_info = "불명"
+    if child:
+        child_info = f"{child.name} (초{child.grade})"
+
+    user_message = f"""## 수신 알림
+원문: {parsed_notification.get('raw_message', '')}
+파싱 결과: {json.dumps(parsed_notification, ensure_ascii=False)}
+
+## 발신자
+{contact_info}
+
+## 관련 활동
+{activity_info}
+
+## 아이
+{child_info}
+
+## 가족 전체 컨텍스트
+{family_context}"""
+
+    response = await client.messages.create(
+        model="claude-sonnet-4-5-20250929",
+        max_tokens=1000,
+        system=MOM_RESPONDER_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    )
+
+    text = response.content[0].text
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            start = text.index("{")
+            end = text.rindex("}") + 1
+            return json.loads(text[start:end])
+        except (ValueError, json.JSONDecodeError):
+            return {
+                "priority": "normal",
+                "assessment": "판단 불가",
+                "requires_response": False,
+                "auto_send_ok": False,
+                "confidence": 0.0,
+                "suggested_response": None,
+                "schedule_impact": {"type": "none"},
+                "follow_up_actions": [],
+            }
