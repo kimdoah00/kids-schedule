@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models import User, Child, Activity, ScheduleBlock, Contact, BlockType
-from schemas import ScheduleBlockCreate, ScheduleBlockResponse, GapInfo
+from models import User, Child, Activity, ScheduleBlock, Contact, BlockType, ActivityContact
+from schemas import ScheduleBlockCreate, ScheduleBlockResponse, GapInfo, ActivityContactCreate, ActivityContactResponse
 from utils.auth import get_current_user
 
 router = APIRouter(prefix="/schedule", tags=["schedule"])
@@ -212,3 +212,88 @@ async def detect_gaps(
                 ))
 
     return gaps
+
+
+# ===== ACTIVITY CONTACTS =====
+
+
+@router.get("/activities/{activity_id}/contacts", response_model=list[ActivityContactResponse])
+async def list_activity_contacts(
+    activity_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """List contacts linked to an activity."""
+    result = await db.execute(
+        select(ActivityContact).where(ActivityContact.activity_id == activity_id)
+    )
+    acs = result.scalars().all()
+
+    items = []
+    for ac in acs:
+        contact = await db.get(Contact, ac.contact_id)
+        if contact:
+            items.append(ActivityContactResponse(
+                id=ac.id,
+                contact_id=ac.contact_id,
+                contact_name=contact.name,
+                role=ac.role,
+                is_primary=ac.is_primary,
+                channel=contact.channel.value,
+            ))
+    return items
+
+
+@router.post("/activities/{activity_id}/contacts", response_model=ActivityContactResponse)
+async def add_activity_contact(
+    activity_id: str,
+    req: ActivityContactCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Link a contact to an activity."""
+    contact = await db.get(Contact, req.contact_id)
+    if not contact:
+        raise HTTPException(404, "Contact not found")
+
+    ac = ActivityContact(
+        activity_id=activity_id,
+        contact_id=req.contact_id,
+        role=req.role,
+        is_primary=req.is_primary,
+    )
+    db.add(ac)
+    await db.commit()
+    await db.refresh(ac)
+
+    return ActivityContactResponse(
+        id=ac.id,
+        contact_id=ac.contact_id,
+        contact_name=contact.name,
+        role=ac.role,
+        is_primary=ac.is_primary,
+        channel=contact.channel.value,
+    )
+
+
+@router.delete("/activities/{activity_id}/contacts/{contact_id}")
+async def remove_activity_contact(
+    activity_id: str,
+    contact_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Unlink a contact from an activity."""
+    result = await db.execute(
+        select(ActivityContact).where(
+            ActivityContact.activity_id == activity_id,
+            ActivityContact.contact_id == contact_id,
+        )
+    )
+    ac = result.scalar_one_or_none()
+    if not ac:
+        raise HTTPException(404, "Activity-Contact link not found")
+
+    await db.delete(ac)
+    await db.commit()
+    return {"status": "deleted"}
