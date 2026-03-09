@@ -2,14 +2,11 @@ import { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   ScrollView, SafeAreaView, ActivityIndicator, Image, Platform,
+  Linking, PermissionsAndroid,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { onboardingAPI } from '../../src/services/api';
-import {
-  checkNotificationListenerPermission,
-  requestNotificationListenerPermission,
-} from '../../src/services/NotificationService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SmsScan() {
@@ -17,25 +14,42 @@ export default function SmsScan() {
   const [pastedMessages, setPastedMessages] = useState('');
   const [screenshots, setScreenshots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [permissionGranted, setPermissionGranted] = useState(false);
+  const [smsGranted, setSmsGranted] = useState(false);
   const [step, setStep] = useState<'permission' | 'scan'>('permission');
 
-  const checkPermission = async () => {
-    if (Platform.OS !== 'android') {
-      setStep('scan');
-      return;
-    }
-    const granted = await checkNotificationListenerPermission();
-    setPermissionGranted(granted);
-    if (granted) {
-      setStep('scan');
+  const requestSmsPermission = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const result = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.READ_SMS,
+        {
+          title: 'SMS 읽기 권한',
+          message: '입퇴실 문자를 분석하려면 SMS 읽기 권한이 필요합니다.',
+          buttonPositive: '허용',
+          buttonNegative: '거부',
+        }
+      );
+      setSmsGranted(result === PermissionsAndroid.RESULTS.GRANTED);
+      if (result === PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('SMS 권한 허용됨', 'SMS 문자를 읽을 수 있습니다.');
+      }
+    } catch (e) {
+      console.log('SMS permission error:', e);
     }
   };
 
-  const openPermissionSettings = async () => {
-    await requestNotificationListenerPermission();
-    // After returning from settings, check again
-    setTimeout(checkPermission, 1000);
+  const openNotificationListenerSettings = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      await Linking.sendIntent('android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS');
+    } catch (e) {
+      // Fallback: open app notification settings
+      try {
+        await Linking.openSettings();
+      } catch (e2) {
+        Alert.alert('설정을 열 수 없습니다', '설정 > 알림 > 알림 접근에서 키즈스케줄을 허용해주세요.');
+      }
+    }
   };
 
   const addScreenshot = async () => {
@@ -136,31 +150,34 @@ export default function SmsScan() {
           </Text>
 
           <View style={styles.channelList}>
-            <View style={styles.channelItem}>
+            <TouchableOpacity style={styles.channelItem} onPress={requestSmsPermission}>
               <Text style={styles.channelIcon}>📱</Text>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.channelName}>SMS 문자</Text>
                 <Text style={styles.channelDesc}>입퇴실, 도착 알림 문자</Text>
               </View>
-            </View>
-            <View style={styles.channelItem}>
+              <Text style={styles.channelAction}>설정 →</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.channelItem} onPress={openNotificationListenerSettings}>
               <Text style={styles.channelIcon}>💬</Text>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.channelName}>카카오톡</Text>
                 <Text style={styles.channelDesc}>학원/선생님 카톡 알림</Text>
               </View>
-            </View>
-            <View style={styles.channelItem}>
+              <Text style={styles.channelAction}>설정 →</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.channelItem} onPress={openNotificationListenerSettings}>
               <Text style={styles.channelIcon}>🏫</Text>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.channelName}>하이클래스</Text>
                 <Text style={styles.channelDesc}>학교 알림장, 공지사항</Text>
               </View>
-            </View>
+              <Text style={styles.channelAction}>설정 →</Text>
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.analyzeBtn} onPress={openPermissionSettings}>
-            <Text style={styles.analyzeBtnText}>알림 접근 권한 설정하기</Text>
+          <TouchableOpacity style={styles.analyzeBtn} onPress={() => setStep('scan')}>
+            <Text style={styles.analyzeBtnText}>다음 단계로 →</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.skipPermBtn} onPress={() => setStep('scan')}>
@@ -247,6 +264,7 @@ const styles = StyleSheet.create({
   channelIcon: { fontSize: 28 },
   channelName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
   channelDesc: { fontSize: 12, color: '#888', marginTop: 2 },
+  channelAction: { fontSize: 13, color: '#6c5ce7', fontWeight: '600' },
   infoBox: {
     backgroundColor: '#f8f7ff', borderRadius: 12, padding: 16, marginBottom: 20,
     borderLeftWidth: 3, borderLeftColor: '#6c5ce7',
