@@ -228,6 +228,23 @@ class ScheduleOcrResponse(BaseModel):
 
 # ===== PUSH =====
 
+# ===== ACTIVITY CONTACTS =====
+
+class ActivityContactCreate(BaseModel):
+    contact_id: str
+    role: str  # teacher, shuttle, pickup, admin
+    is_primary: bool = False
+
+
+class ActivityContactResponse(BaseModel):
+    id: str
+    contact_id: str
+    contact_name: str
+    role: str
+    is_primary: bool
+    channel: str
+
+
 class PushRequest(BaseModel):
     title: str
     body: str

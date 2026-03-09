@@ -128,6 +128,20 @@ class Activity(Base):
 
     child: Mapped["Child"] = relationship(back_populates="activities")
     schedule_blocks: Mapped[List["ScheduleBlock"]] = relationship(back_populates="activity")
+    activity_contacts: Mapped[List["ActivityContact"]] = relationship(back_populates="activity")
+
+
+class ActivityContact(Base):
+    __tablename__ = "activity_contacts"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    activity_id: Mapped[str] = mapped_column(ForeignKey("activities.id"))
+    contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"))
+    role: Mapped[str] = mapped_column(String(20))  # teacher, shuttle, pickup, admin
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    activity: Mapped["Activity"] = relationship(back_populates="activity_contacts")
+    contact: Mapped["Contact"] = relationship()
 
 
 class ScheduleBlock(Base):
