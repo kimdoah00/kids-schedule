@@ -228,6 +228,26 @@ class ScheduleOcrResponse(BaseModel):
 
 # ===== PUSH =====
 
+# ===== PENDING RESPONSES =====
+
+class PendingResponseResponse(BaseModel):
+    id: str
+    notification_id: str
+    contact_id: str
+    contact_name: str
+    channel: str
+    draft_text: str
+    priority: str
+    confidence_score: float
+    status: str
+    created_at: str
+    raw_notification: str  # original message that triggered this
+
+
+class ResponseEditRequest(BaseModel):
+    text: str
+
+
 # ===== ACTIVITY CONTACTS =====
 
 class ActivityContactCreate(BaseModel):

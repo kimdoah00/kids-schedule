@@ -54,6 +54,14 @@ class NotificationStatus(str, enum.Enum):
     IGNORED = "ignored"
 
 
+class ResponseStatus(str, enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    EDITED = "edited"
+    REJECTED = "rejected"
+    AUTO_SENT = "auto_sent"
+
+
 # ===== USERS & FAMILIES =====
 
 class Family(Base):
@@ -206,8 +214,34 @@ class IncomingNotification(Base):
     schedule_impact: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     source_app: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     source_channel: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    activity_id: Mapped[Optional[str]] = mapped_column(ForeignKey("activities.id"), nullable=True)
+    child_id: Mapped[Optional[str]] = mapped_column(ForeignKey("children.id"), nullable=True)
+    priority: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # urgent/normal/info
+    requires_response: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_responded: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[NotificationStatus] = mapped_column(SAEnum(NotificationStatus), default=NotificationStatus.PENDING)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ===== PENDING RESPONSES =====
+
+class PendingResponse(Base):
+    __tablename__ = "pending_responses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=gen_uuid)
+    family_id: Mapped[str] = mapped_column(ForeignKey("families.id"))
+    notification_id: Mapped[str] = mapped_column(ForeignKey("incoming_notifications.id"))
+    contact_id: Mapped[str] = mapped_column(ForeignKey("contacts.id"))
+    channel: Mapped[str] = mapped_column(String(20))  # sms, kakao, hiclass
+    draft_text: Mapped[str] = mapped_column(Text)
+    priority: Mapped[str] = mapped_column(String(20))  # urgent, normal
+    confidence_score: Mapped[float] = mapped_column(default=0.0)
+    status: Mapped[ResponseStatus] = mapped_column(SAEnum(ResponseStatus), default=ResponseStatus.PENDING)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    responded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    notification: Mapped["IncomingNotification"] = relationship()
+    contact: Mapped["Contact"] = relationship()
 
 
 # ===== SMS SCAN =====
