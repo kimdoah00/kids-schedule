@@ -1,6 +1,10 @@
 import os
+import logging
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./kids_schedule.db")
 
@@ -32,3 +36,21 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Migrate existing tables: add new columns if missing
+    migrations = [
+        ("incoming_notifications", "activity_id", "VARCHAR"),
+        ("incoming_notifications", "child_id", "VARCHAR"),
+        ("incoming_notifications", "priority", "VARCHAR(20)"),
+        ("incoming_notifications", "requires_response", "BOOLEAN DEFAULT FALSE"),
+        ("incoming_notifications", "auto_responded", "BOOLEAN DEFAULT FALSE"),
+    ]
+    async with engine.begin() as conn:
+        for table, column, col_type in migrations:
+            try:
+                await conn.execute(text(
+                    f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                ))
+                logger.info(f"Migration: added {table}.{column}")
+            except Exception:
+                pass  # column already exists
