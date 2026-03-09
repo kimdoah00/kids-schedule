@@ -4,11 +4,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from database import get_db
-from models import User, Child, CheckinEvent, CheckinEventType, ScheduleBlock, Activity, Contact, IncomingNotification
+from models import (
+    User, Child, CheckinEvent, CheckinEventType, ScheduleBlock,
+    Activity, Contact, IncomingNotification, ActivityContact,
+    PendingResponse, ResponseStatus,
+)
 from schemas import CheckinRequest
 from utils.auth import get_current_user
 from routers.schedule import format_time
-from services.ai_service import parse_notification
+from services.ai_service import parse_notification, identify_sender, assess_and_respond
+from services.sms_service import send_sms
+from services.push_service import send_push_to_family
 
 router = APIRouter(prefix="/checkin", tags=["checkin"])
 
@@ -80,75 +86,159 @@ async def process_notification(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Process raw notification from NotificationListenerService via Inbox Agent."""
-    # Inbox Agent로 파싱
+    """Process raw notification via 5-Agent pipeline:
+    Inbox Agent → Mom-Responder → auto-send or approval queue."""
+
+    # === Stage 1: Inbox Agent (parse + identify) ===
     parsed = await parse_notification(
         raw_message=req.raw_message,
         source_app=req.source_app or "unknown",
         source_channel=req.source_channel or "unknown",
     )
+    parsed["raw_message"] = req.raw_message
 
     event_type = parsed.get("event_type", "chat")
 
-    # 입퇴실 이벤트면 CheckinEvent 생성
-    if event_type in ("enter", "exit", "board", "arrive"):
-        child_id = req.child_id
-        if not child_id and parsed.get("child_name"):
-            child_result = await db.execute(
-                select(Child).where(
-                    Child.family_id == user.family_id,
-                    Child.name.contains(parsed["child_name"])
-                )
-            )
-            child = child_result.scalar_one_or_none()
-            if child:
-                child_id = child.id
+    # Identify sender contact and related activity
+    contact, activity = await identify_sender(
+        db, user.family_id,
+        req.source_app or "", req.source_channel or "", req.raw_message,
+    )
 
-        if child_id:
-            now = datetime.now()
-            matched_block_id = None
-            blocks_result = await db.execute(
-                select(ScheduleBlock).join(Activity)
-                .where(Activity.child_id == child_id, ScheduleBlock.day_of_week == now.weekday())
-                .order_by(ScheduleBlock.start_time)
+    # Identify child
+    child = None
+    child_id = req.child_id
+    if not child_id and parsed.get("child_name"):
+        child_result = await db.execute(
+            select(Child).where(
+                Child.family_id == user.family_id,
+                Child.name.contains(parsed["child_name"]),
             )
-            for block in blocks_result.scalars().all():
-                if block.start_time <= now.time() <= block.end_time:
-                    matched_block_id = block.id
-                    break
+        )
+        child = child_result.scalar_one_or_none()
+        if child:
+            child_id = child.id
+    elif child_id:
+        child = await db.get(Child, child_id)
 
-            event = CheckinEvent(
-                child_id=child_id,
-                schedule_block_id=matched_block_id,
-                event_type=CheckinEventType(event_type),
-                raw_message=req.raw_message,
-                source_app=req.source_app,
-                source_channel=req.source_channel,
-                matched=matched_block_id is not None,
-            )
-            db.add(event)
+    # Create CheckinEvent for enter/exit events
+    if event_type in ("enter", "exit", "board", "arrive") and child_id:
+        now = datetime.now()
+        matched_block_id = None
+        blocks_result = await db.execute(
+            select(ScheduleBlock).join(Activity)
+            .where(Activity.child_id == child_id, ScheduleBlock.day_of_week == now.weekday())
+            .order_by(ScheduleBlock.start_time)
+        )
+        for block in blocks_result.scalars().all():
+            if block.start_time <= now.time() <= block.end_time:
+                matched_block_id = block.id
+                break
 
-    # 모든 알림은 IncomingNotification에도 저장
+        checkin = CheckinEvent(
+            child_id=child_id,
+            schedule_block_id=matched_block_id,
+            event_type=CheckinEventType(event_type),
+            raw_message=req.raw_message,
+            source_contact_id=contact.id if contact else None,
+            source_app=req.source_app,
+            source_channel=req.source_channel,
+            matched=matched_block_id is not None,
+        )
+        db.add(checkin)
+
+    # === Stage 2: Mom-Responder Agent (assess + decide) ===
+    assessment = await assess_and_respond(
+        db, user.family_id, parsed, contact, activity, child,
+    )
+
+    priority = assessment.get("priority", "info")
+    auto_send_ok = assessment.get("auto_send_ok", False)
+    confidence = assessment.get("confidence", 0.0)
+    suggested_response = assessment.get("suggested_response")
+    requires_response = assessment.get("requires_response", False)
+
+    # Save notification with enriched data
     notification = IncomingNotification(
         family_id=user.family_id,
+        source_contact_id=contact.id if contact else None,
         raw_content=req.raw_message,
         ai_summary=parsed.get("summary"),
-        schedule_impact=event_type if event_type != "chat" else None,
+        schedule_impact=assessment.get("schedule_impact", {}).get("type"),
         source_app=req.source_app,
         source_channel=req.source_channel,
+        activity_id=activity.id if activity else None,
+        child_id=child_id,
+        priority=priority,
+        requires_response=requires_response,
     )
     db.add(notification)
+    await db.flush()  # get notification.id
+
+    # === Stage 3: Auto-send or Queue ===
+    response_action = None
+
+    if requires_response and suggested_response and contact:
+        channel = assessment.get("response_channel", contact.channel.value)
+
+        if auto_send_ok and confidence >= 0.85:
+            # Auto-send
+            if channel == "sms" and contact.phone:
+                await send_sms(contact.phone, suggested_response)
+
+            pending = PendingResponse(
+                family_id=user.family_id,
+                notification_id=notification.id,
+                contact_id=contact.id,
+                channel=channel,
+                draft_text=suggested_response,
+                priority=priority,
+                confidence_score=confidence,
+                status=ResponseStatus.AUTO_SENT,
+                responded_at=datetime.utcnow(),
+            )
+            db.add(pending)
+            notification.auto_responded = True
+            response_action = "auto_sent"
+        else:
+            # Queue for mom approval
+            pending = PendingResponse(
+                family_id=user.family_id,
+                notification_id=notification.id,
+                contact_id=contact.id,
+                channel=channel,
+                draft_text=suggested_response,
+                priority=priority,
+                confidence_score=confidence,
+                status=ResponseStatus.PENDING,
+            )
+            db.add(pending)
+            response_action = "queued_for_approval"
+
+            # Push notification to mom
+            push_title = "응답 필요" if priority == "urgent" else "응답 확인"
+            push_body = f"{contact.name}: {parsed.get('summary', req.raw_message[:50])}"
+            await send_push_to_family(
+                db, user.family_id,
+                title=push_title,
+                body=push_body,
+                data={"type": "pending_response", "notification_id": notification.id},
+            )
+
     await db.commit()
 
-    # Schedule-Guard 트리거 (입퇴실 이벤트일 때)
+    # Schedule-Guard trigger
     guard_result = None
-    if event_type in ("enter", "exit", "board", "arrive") and req.child_id:
+    if event_type in ("enter", "exit", "board", "arrive") and child_id:
         from services.schedule_guard import run_guard_check
-        guard_result = await run_guard_check(db, req.child_id)
+        guard_result = await run_guard_check(db, child_id)
 
     return {
         "parsed": parsed,
         "event_type": event_type,
+        "priority": priority,
+        "assessment": assessment.get("assessment"),
+        "response_action": response_action,
         "guard_warnings": guard_result.get("warnings", []) if guard_result else [],
     }
 
