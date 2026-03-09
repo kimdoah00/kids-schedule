@@ -1,6 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AuthResponse, Child, Contact, ScheduleBlock, GapInfo, ChatResponse } from '../types';
+import { AuthResponse, Child, Contact, ScheduleBlock, GapInfo, ChatResponse, PendingResponse } from '../types';
 
 // Change this to your Railway URL after deployment
 const BASE_URL = __DEV__
@@ -161,6 +161,26 @@ export const messagesAPI = {
     const params: any = { days };
     if (channel) params.channel = channel;
     const { data } = await api.get('/messages/', { params });
+    return data;
+  },
+};
+
+// ===== RESPONSES (APPROVAL QUEUE) =====
+export const responsesAPI = {
+  listPending: async (): Promise<PendingResponse[]> => {
+    const { data } = await api.get('/responses/pending');
+    return data;
+  },
+  approve: async (id: string) => {
+    const { data } = await api.post(`/responses/${id}/approve`);
+    return data;
+  },
+  edit: async (id: string, text: string) => {
+    const { data } = await api.post(`/responses/${id}/edit`, { text });
+    return data;
+  },
+  reject: async (id: string) => {
+    const { data } = await api.post(`/responses/${id}/reject`);
     return data;
   },
 };

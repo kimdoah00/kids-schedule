@@ -33,6 +33,13 @@ export default function MomLayout() {
         }}
       />
       <Tabs.Screen
+        name="approvals"
+        options={{
+          title: '승인',
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 22 }}>{'\\u2705'}</Text>,
+        }}
+      />
+      <Tabs.Screen
         name="schedule"
         options={{
           title: '스케줄',

@@ -78,6 +78,20 @@ export interface ChatMessage {
   send_results?: SendResult[];
 }
 
+export interface PendingResponse {
+  id: string;
+  notification_id: string;
+  contact_id: string;
+  contact_name: string;
+  channel: string;
+  draft_text: string;
+  priority: 'urgent' | 'normal' | 'info';
+  confidence_score: number;
+  status: string;
+  created_at: string;
+  raw_notification: string;
+}
+
 export interface TimelineItem {
   block_id: string;
   activity_name: string;
